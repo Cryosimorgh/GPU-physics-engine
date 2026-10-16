@@ -1,3 +1,4 @@
+#include "asset_path.h"
 #include "spatial.h"
 #include "execution-layout.h"
 #include "spatial-layout.h"
@@ -42,7 +43,7 @@ Spatial *sp_open(StorageDevice *d,const uint64_t *base,uint32_t n,uint32_t cap,u
  for(int i=0;i<3;i++)s->h[i]=base[i];for(int i=0;i<4;i++)s->h[i+3]=s->owned[i];s->h[7]=base[8];
  for(int i=0;i<7;i++)s->reference[i]=base[i];s->reference[7]=base[8];
  uint32_t k[]={n,cap,design,stride,fixture,0,s->T,s->G,0,0,0,0,pairs,s->out,s->input,visits};memcpy(s->k,k,sizeof(k));
- for(int i=0;i<24;i++){char path[128];snprintf(path,sizeof(path),"%s.dxil",names[i]);FILE *f=fopen(path,"rb");if(!f)goto fail;fseek(f,0,SEEK_END);long len=ftell(f);if(len<=0||len>16*1024*1024){fclose(f);goto fail;}rewind(f);void *p=malloc(len);if(!p){fclose(f);goto fail;}int ok=fread(p,1,len,f)==(size_t)len;fclose(f);ok=ok&&s_load(d,i==23?79:18+i,p,len);free(p);if(!ok)goto fail;}
+ for(int i=0;i<24;i++){char path[128];snprintf(path,sizeof(path),"%s.dxil",names[i]);FILE *f=bench_asset_open(path);if(!f)goto fail;fseek(f,0,SEEK_END);long len=ftell(f);if(len<=0||len>16*1024*1024){fclose(f);goto fail;}rewind(f);void *p=malloc(len);if(!p){fclose(f);goto fail;}int ok=fread(p,1,len,f)==(size_t)len;fclose(f);ok=ok&&s_load(d,i==23?79:18+i,p,len);free(p);if(!ok)goto fail;}
  if(!s_begin(d))goto fail;s->k[8]=(uint32_t)s->bytes[0]-256;s->k[9]=(uint32_t)s->bytes[1]-256;s->k[10]=(uint32_t)s->bytes[2]-256;s->k[11]=(uint32_t)s->bytes[3]-256;
  if(!dispatch(s,GUARDS,64)||!s_submit(d,0)||!s_wait(d))abort();return s;
 fail:sp_close(s);return NULL;

@@ -1,0 +1,93 @@
+{
+  "status": "PASS",
+  "scope": "G4 local interactive application; not a frozen G4 gate approval",
+  "recorded_utc": "2026-10-16T16:17:24.692204+00:00",
+  "executable_sha256": "41b78687db0da72c116b506ae144e8e8bf20c95897f0c86ee81baa78b0c5f4e1",
+  "cpu_target": "x86_64 baseline",
+  "gpu": "NVIDIA GeForce RTX 4070 Ti SUPER",
+  "cpu_contract_tests": 5,
+  "device_and_package_tests": 17,
+  "test_names": [
+    "launch-bat",
+    "oracle-10000-9",
+    "oracle-10000-10",
+    "oracle-10000-11",
+    "oracle-100000-9",
+    "oracle-100000-10",
+    "oracle-100000-11",
+    "oracle-1000000-9",
+    "oracle-1000000-10",
+    "oracle-1000000-11",
+    "depth-1",
+    "depth-2",
+    "depth-3",
+    "native-device-regressions",
+    "lifecycle",
+    "interactive-controls-rejection-resize-minimize",
+    "interactive-beyond-10000"
+  ],
+  "large_scene_oracle": {
+    "populations": [
+      10000,
+      100000,
+      1000000
+    ],
+    "profiles": [
+      9,
+      10,
+      11
+    ],
+    "ticks_per_case": 24,
+    "full_coverage": true,
+    "independent_physics": true,
+    "identity_and_cleanup": true
+  },
+  "interactive": {
+    "name": "interactive-controls-rejection-resize-minimize",
+    "status": "PASS",
+    "events": 791,
+    "frames": 745,
+    "scene_replacements": 8
+  },
+  "long_interactive": {
+    "name": "interactive-beyond-10000",
+    "status": "PASS",
+    "actual_simulation_ticks": 10204,
+    "frames": 10204
+  },
+  "rejection_preserved_state_sha256": true,
+  "deterministic_reset_initial_sha256_equal": true,
+  "telemetry_dropped_in_accepted_tests": 0,
+  "validation_errors_in_accepted_tests": 0,
+  "csv_json_counts_and_p95_agree": true,
+  "development_tools_absent_from_packaged_process_path": true,
+  "extracted_path_contains_spaces": true,
+  "foreign_working_directory": true,
+  "frames_in_flight": [
+    1,
+    2,
+    3
+  ],
+  "debug_layer_and_gbv_separate": true,
+  "raw_results_local": "local-test-results/run-20261016T161524Z-ff4644",
+  "reproduce": [
+    "python build_physics.py",
+    "python build_viewer.py",
+    "python build_viewer.py --host-only --reference-cli",
+    "python build_viewer.py --host-only --lifecycle",
+    "zig test tests.zig -O ReleaseSafe -target x86_64-windows-gnu -mcpu=baseline",
+    "python package_windows.py --no-build",
+    "python test_portable.py"
+  ],
+  "displayed_fps_status": "UNVERIFIED",
+  "g4_formally_closed": false,
+  "g5_started": false,
+  "limitations": [
+    "Independent 16-ball tables, not a million-body connected island",
+    "Overview samples rendered instances; selected population still fully simulated",
+    "Existing ordered G4 state publication; strict immutable snapshots not newly guaranteed",
+    "One-million and clustered scenes have no 60 Hz qualification",
+    "Scene replacement temporarily needs old plus new resources",
+    "Remote development tests do not establish physical display or photon latency"
+  ]
+}

@@ -1,3 +1,4 @@
+#include "asset_path.h"
 #include "physics.h"
 #include "physics-layout.h"
 #include "execution-layout.h"
@@ -31,7 +32,7 @@ Physics *ph_open(StorageDevice *d,const uint64_t *base,const PhysicsConfig *cfg)
  p->sp=sp_open(d,base,cfg->n,cfg->capacity,cfg->design,0,1,cfg->pairs,65536,cfg->budget);if(!p->sp){last_error=10+sp_error();goto fail;}p->output=sp_output(p->sp);sp_physics(p->sp,p->owned[0],p->owned[1],cfg->dt,((cfg->flags&8)?8192:0)|(cfg->fixture>=9?G4_PRECISE_CONTACT_POLICY_FLAG:0));
  p->h[0]=base[0];p->h[1]=p->owned[0];p->h[2]=base[1];p->h[3]=p->output.buffer;p->h[4]=p->owned[1];p->h[5]=p->owned[2];p->h[6]=p->owned[3];p->h[7]=base[8];
  uint32_t dt;memcpy(&dt,&cfg->dt,4);uint32_t k[]={cfg->n,cfg->capacity,cfg->contacts,cfg->pairs,dt,cfg->flags,0,cfg->fixture,p->output.pairs_byte,p->output.contacts_indices_byte,0,cfg->iterations,cfg->sleep_frames,cfg->max_bodies,cfg->max_work,cfg->kick_slot};memcpy(p->k,k,sizeof(k));
- last_error=4;for(int i=0;i<31;i++){char name[128];snprintf(name,sizeof(name),"%s.dxil",names[i]);FILE *f=fopen(name,"rb");if(!f)goto fail;fseek(f,0,SEEK_END);long len=ftell(f);if(len<=0||len>16*1024*1024){fclose(f);goto fail;}rewind(f);void *data=malloc((size_t)len);if(!data){fclose(f);goto fail;}int ok=fread(data,1,(size_t)len,f)==(size_t)len;fclose(f);ok=ok&&s_load(d,41+i,data,(uint64_t)len);free(data);if(!ok)goto fail;}
+ last_error=4;for(int i=0;i<31;i++){char name[128];snprintf(name,sizeof(name),"%s.dxil",names[i]);FILE *f=bench_asset_open(name);if(!f)goto fail;fseek(f,0,SEEK_END);long len=ftell(f);if(len<=0||len>16*1024*1024){fclose(f);goto fail;}rewind(f);void *data=malloc((size_t)len);if(!data){fclose(f);goto fail;}int ok=fread(data,1,(size_t)len,f)==(size_t)len;fclose(f);ok=ok&&s_load(d,41+i,data,(uint64_t)len);free(data);if(!ok)goto fail;}
  if(!s_indirect_open(d)||!s_begin(d)||!dispatch(p,GUARDS,64)||!s_submit(d,0)||!s_wait(d))goto fail;p->allocation_us=s_clock()-start;return p;
 fail:ph_close(p);return NULL;
 }

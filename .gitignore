@@ -7,3 +7,12 @@ evidence/
 *.bin
 *.csv
 interactive-*.json
+
+zig-out/bin/results/
+zig-out/bin/*.dxil
+local-test-results/
+package-test-extraction*/
+
+!examples/**/*.csv
+
+dist/GPUPhysicsBench-Windows-x64*/

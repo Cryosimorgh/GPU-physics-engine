@@ -15,3 +15,7 @@ Viewer *viewer_open(StorageDevice*,const uint64_t*,Physics*,const ViewerConfig*)
 int viewer_run(Viewer*);
 void viewer_close(Viewer*);
 StorageDevice *s_open_view(int debug,int direct);
+int viewer_request(Viewer*,ViewerConfig*);
+void viewer_rejected(Viewer*);
+void viewer_hide(Viewer*);
+uint64_t viewer_live_ticks(Viewer*);
