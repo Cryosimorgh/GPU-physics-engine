@@ -16,3 +16,12 @@ package-test-extraction*/
 !examples/**/*.csv
 
 dist/GPUPhysicsBench-Windows-x64*/
+
+third_party/imgui/.github/
+third_party/imgui/examples/
+third_party/imgui/docs/
+third_party/imgui/misc/
+third_party/imgui/imgui_demo.cpp
+imgui.ini
+playground-test-results/
+dist/GPUPhysicsPlayground-Windows-x64*/

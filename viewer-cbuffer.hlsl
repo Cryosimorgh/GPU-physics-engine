@@ -1,4 +1,4 @@
-// Generated viewer ABI SHA256 9c33e204f5e9cc0df35e8c1ca730cd5a811c061b0103e4cabbb7560aedb2e20f
+// Generated viewer ABI SHA256 d94002db158c8103c59416988312cff095e8527bb603be0b989f0a7a659c37b1
 #include "viewer-layout.h"
 cbuffer Camera:register(b0){
 uint objectCount;
@@ -18,11 +18,11 @@ uint tableCount;
 uint expectedEpoch;
 uint attemptTick;
 float minPixelRadius;
-float unused17;
-float unused18;
-float unused19;
-uint unused20;
-uint unused21;
+float arenaWidth;
+float arenaHeight;
+float pickX;
+float pickY;
+uint selectedID;
 uint unused22;
 uint unused23;
 uint unused24;
@@ -35,5 +35,5 @@ uint unused30;
 uint unused31;
 };
 uint cameraWord(uint index){
-uint values[G4_V_CAMERA_WORDS]={objectCount,entityCapacity,visualStride,instanceCount,asuint(cameraX),asuint(cameraY),asuint(halfWidth),asuint(halfHeight),pixelWidth,pixelHeight,expectedGeneration,renderFlags,tableColumns,tableCount,expectedEpoch,attemptTick,asuint(minPixelRadius),asuint(unused17),asuint(unused18),asuint(unused19),unused20,unused21,unused22,unused23,unused24,unused25,unused26,unused27,unused28,unused29,unused30,unused31};return values[index];
+uint values[G4_V_CAMERA_WORDS]={objectCount,entityCapacity,visualStride,instanceCount,asuint(cameraX),asuint(cameraY),asuint(halfWidth),asuint(halfHeight),pixelWidth,pixelHeight,expectedGeneration,renderFlags,tableColumns,tableCount,expectedEpoch,attemptTick,asuint(minPixelRadius),asuint(arenaWidth),asuint(arenaHeight),asuint(pickX),asuint(pickY),selectedID,unused22,unused23,unused24,unused25,unused26,unused27,unused28,unused29,unused30,unused31};return values[index];
 }

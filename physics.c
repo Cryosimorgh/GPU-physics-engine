@@ -22,7 +22,7 @@ static int dispatch(Physics *p,int pass,uint32_t count){uint32_t x,y;if(!s_dispa
 static int indirect(Physics *p,int pass,uint32_t offset){uint32_t saved=p->k[15];int ok=1;if(pass==SOLVE&&p->execution_mode){p->k[15]=0;ok=bind(p)&&s_indirect_count(p->d,pass,p->owned[3],G4_INDIRECT_DISPATCH_BYTE,G4_INDIRECT_COUNT_BYTE);}else if(pass==SOLVE){for(uint32_t chunk=0;chunk<G3_ARGS_CHUNKS(p->cfg.n,p->cfg.flags);chunk++){p->k[15]=chunk*G3_SOLVER_CHUNK_GROUPS;if(!bind(p)||!s_indirect(p->d,pass,p->owned[3],G3_INDIRECT_HEADER_BYTES+G3_INDIRECT_STRIDE_BYTES*chunk)||!s_split(p->d,G3_DISCOVERY_ROUNDS*G3_ARGS_CHUNKS(p->cfg.n,p->cfg.flags))){ok=0;break;}}}else{p->k[15]=0;ok=bind(p)&&s_indirect(p->d,pass,p->owned[3],offset);}p->k[15]=saved;return ok;}
 static int scan(Physics *p,uint32_t count,uint32_t input,uint32_t output,int input32){uint32_t ns[8],is[8],os[8],depth=0,tail=p->tail,old[16];memcpy(old,p->k,sizeof(old));ns[0]=count;is[0]=input;os[0]=output;while(ns[depth]>256){uint32_t next=(ns[depth]+255)/256;depth++;if(depth>=8)return 0;ns[depth]=next;is[depth]=tail;tail+=8*next;os[depth]=tail;tail+=8*next;}if(tail>p->end)return 0;for(uint32_t j=0;j<=depth;j++){p->k[6]=(old[6]&255)|((j==0&&input32)?256:0);p->k[8]=ns[j];p->k[9]=is[j];p->k[10]=os[j];p->k[11]=j<depth?is[j+1]:UINT32_MAX;if(!dispatch(p,SCAN,ns[j]))return 0;}for(uint32_t j=depth;j-->0;){p->k[8]=ns[j];p->k[10]=os[j];p->k[11]=os[j+1];if(!dispatch(p,ADD,ns[j]))return 0;}memcpy(p->k,old,sizeof(old));return 1;}
 void ph_close(Physics *p){if(!p)return;sp_close(p->sp);for(int i=0;i<5;i++)if(p->owned[i]&&!s_retire(p->d,p->owned[i]))abort();s_collect(p->d);free(p);}
-Physics *ph_open(StorageDevice *d,const uint64_t *base,const PhysicsConfig *cfg){last_error=1;if(!cfg||!cfg->n||cfg->n>cfg->capacity||cfg->capacity>UINT32_MAX/G3_METADATA_STRIDE||cfg->design>1||cfg->fixture>11||(cfg->flags&~15u)||!isfinite(cfg->dt)||cfg->dt<FLT_MIN||!cfg->iterations||cfg->iterations>16384||!cfg->sleep_frames||!cfg->max_bodies||cfg->max_bodies>65534||!cfg->max_work)return NULL;
+Physics *ph_open(StorageDevice *d,const uint64_t *base,const PhysicsConfig *cfg){last_error=1;if(!cfg||!cfg->n||cfg->n>cfg->capacity||cfg->capacity>UINT32_MAX/G3_METADATA_STRIDE||cfg->design>1||cfg->fixture>12||(cfg->flags&~15u)||!isfinite(cfg->dt)||cfg->dt<FLT_MIN||!cfg->iterations||cfg->iterations>16384||!cfg->sleep_frames||!cfg->max_bodies||cfg->max_bodies>65534||!cfg->max_work)return NULL;
  if(G3_DISCOVERY_ROUNDS*G3_ARGS_CHUNKS(cfg->n,cfg->flags)>G3_MAX_STREAM_SPLITS)return NULL;
  Physics *p=calloc(1,sizeof(*p));if(!p)return NULL;p->d=d;p->cfg=*cfg;p->source_epoch=1;uint64_t meta=G3_METADATA_END((uint64_t)cfg->capacity),tmp,total=meta;
  for(uint64_t n=cfg->capacity;n>256;){n=(n+255)/256;if(!mul(n,16,&tmp)||!add(total,tmp,&total))goto fail;}
@@ -32,6 +32,7 @@ Physics *ph_open(StorageDevice *d,const uint64_t *base,const PhysicsConfig *cfg)
  p->sp=sp_open(d,base,cfg->n,cfg->capacity,cfg->design,0,1,cfg->pairs,65536,cfg->budget);if(!p->sp){last_error=10+sp_error();goto fail;}p->output=sp_output(p->sp);sp_physics(p->sp,p->owned[0],p->owned[1],cfg->dt,((cfg->flags&8)?8192:0)|(cfg->fixture>=9?G4_PRECISE_CONTACT_POLICY_FLAG:0));
  p->h[0]=base[0];p->h[1]=p->owned[0];p->h[2]=base[1];p->h[3]=p->output.buffer;p->h[4]=p->owned[1];p->h[5]=p->owned[2];p->h[6]=p->owned[3];p->h[7]=base[8];
  uint32_t dt;memcpy(&dt,&cfg->dt,4);uint32_t k[]={cfg->n,cfg->capacity,cfg->contacts,cfg->pairs,dt,cfg->flags,0,cfg->fixture,p->output.pairs_byte,p->output.contacts_indices_byte,0,cfg->iterations,cfg->sleep_frames,cfg->max_bodies,cfg->max_work,cfg->kick_slot};memcpy(p->k,k,sizeof(k));
+ if(cfg->fixture==12){void *zero=s_map(d,base[8],0);if(!zero)goto fail;memset(zero,0,32);if(!s_unmap(d,base[8],32))goto fail;}
  last_error=4;for(int i=0;i<31;i++){char name[128];snprintf(name,sizeof(name),"%s.dxil",names[i]);FILE *f=bench_asset_open(name);if(!f)goto fail;fseek(f,0,SEEK_END);long len=ftell(f);if(len<=0||len>16*1024*1024){fclose(f);goto fail;}rewind(f);void *data=malloc((size_t)len);if(!data){fclose(f);goto fail;}int ok=fread(data,1,(size_t)len,f)==(size_t)len;fclose(f);ok=ok&&s_load(d,41+i,data,(uint64_t)len);free(data);if(!ok)goto fail;}
  if(!s_indirect_open(d)||!s_begin(d)||!dispatch(p,GUARDS,64)||!s_submit(d,0)||!s_wait(d))goto fail;p->allocation_us=s_clock()-start;return p;
 fail:ph_close(p);return NULL;
@@ -78,7 +79,7 @@ int ph_tick_auto(Physics *p,uint32_t tick,PhysicsResult *r){double start=s_clock
 
 int ph_descriptor(Physics *p,uint32_t *out){if(!p->header_valid||p->cached_tick!=p->last_tick||s_completed(p->d)==UINT64_MAX||s_completed(p->d)<s_fence(p->d))return 0;memcpy(out,p->header,sizeof(p->header));return 1;}
 
-int ph_view_compatible(Physics *p,const uint64_t *base,uint32_t n,uint32_t cap,uint32_t fixture){return p&&base&&p->cfg.n==n&&p->cfg.capacity==cap&&p->cfg.fixture==fixture&&fixture>=9&&fixture<=11&&p->h[0]==base[0]&&p->h[2]==base[1];}
+int ph_view_compatible(Physics *p,const uint64_t *base,uint32_t n,uint32_t cap,uint32_t fixture){return p&&base&&p->cfg.n==n&&p->cfg.capacity==cap&&p->cfg.fixture==fixture&&fixture>=9&&fixture<=12&&p->h[0]==base[0]&&p->h[2]==base[1];}
 
 int ph_cell_mode(Physics *p,uint32_t mode){if(!p||mode>1||p->has_tick||(mode&&p->cfg.fixture<9)||!sp_g4_cell_mode(p->sp,mode))return 0;p->cell_mode=mode;return 1;}
 uint32_t ph_cell_mode_value(Physics *p){return p->cell_mode;}
@@ -98,3 +99,5 @@ int ph_scene_one(Physics *p,uint32_t dense){
  uint32_t h[64];if(!ph_header(p,h)||h[0])return 0;uint32_t old=p->k[15];p->k[15]=dense;
  int ok=s_begin(p->d)&&dispatch(p,SCENE_ONE,1)&&s_submit(p->d,0)&&s_wait(p->d);p->k[15]=old;return ok;
 }
+
+int ph_user_command(Physics *p,uint64_t handle){if(p->cfg.fixture!=12)return handle==0;if(!handle)return 0;p->h[7]=handle;return 1;}

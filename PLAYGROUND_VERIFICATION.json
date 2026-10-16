@@ -1,0 +1,497 @@
+{
+  "schema_version": 1,
+  "scope": "Playable Playground acceptance only; does not close frozen G4 or start G5",
+  "app_acceptance": "PASS",
+  "generated_utc": "2026-10-16T17:18:26.037997+00:00",
+  "branch": "g4-playable-playground",
+  "executable_sha256": "1d678502e28285670824f2790d844737ab6cc8696362133ae3997b95a09b2167",
+  "hardware": "NVIDIA GeForce RTX 4070 Ti SUPER",
+  "packaged_app": {
+    "status": "PASS",
+    "populations": [
+      {
+        "n": 100,
+        "status": "PASS",
+        "actual_ticks": 294,
+        "exact_tick2_pairs": 50,
+        "actual_tick2_pairs": 50,
+        "max_contacts": 52,
+        "minimum_active": 100,
+        "peak_usage": 31621120
+      },
+      {
+        "n": 1000,
+        "status": "PASS",
+        "actual_ticks": 139,
+        "exact_tick2_pairs": 500,
+        "actual_tick2_pairs": 500,
+        "max_contacts": 514,
+        "minimum_active": 1000,
+        "peak_usage": 34889728
+      },
+      {
+        "n": 10000,
+        "status": "PASS",
+        "actual_ticks": 138,
+        "exact_tick2_pairs": 5000,
+        "actual_tick2_pairs": 5000,
+        "max_contacts": 5096,
+        "minimum_active": 10000,
+        "peak_usage": 57597952
+      },
+      {
+        "n": 100000,
+        "status": "PASS",
+        "actual_ticks": 128,
+        "exact_tick2_pairs": 49320,
+        "actual_tick2_pairs": 49320,
+        "max_contacts": 49842,
+        "minimum_active": 100000,
+        "peak_usage": 299565056
+      },
+      {
+        "n": 1000000,
+        "status": "PASS",
+        "actual_ticks": 56,
+        "exact_tick2_pairs": 500000,
+        "actual_tick2_pairs": 500000,
+        "max_contacts": 508565,
+        "minimum_active": 999978,
+        "peak_usage": 2623471616
+      }
+    ],
+    "gbv_frame_depths": [
+      1,
+      2,
+      3
+    ],
+    "controls": true,
+    "scene_replacements": 12,
+    "rejection_source_hash_preserved": true,
+    "reset_initial_hash_identical": true,
+    "csv_json_counts_agree": true,
+    "launch_bat_foreign_cwd_system_path": "PASS",
+    "extracted_path": "C:\\Users\\SHIELD~1\\AppData\\Local\\Temp\\GPU Physics Playground extracted hfyg27cb",
+    "executable_sha256": "1d678502e28285670824f2790d844737ab6cc8696362133ae3997b95a09b2167",
+    "display_fps": "UNVERIFIED",
+    "g4_formally_closed": false,
+    "g5_started": false,
+    "screenshots": [
+      "first-launch.png",
+      "million-balls.png",
+      "statistics-expanded.png"
+    ]
+  },
+  "interaction": {
+    "status": "PASS",
+    "n": 100,
+    "actual_ticks_per_case": 1,
+    "selected_body_velocity_delta": 0.5478125512599945,
+    "neighbor_velocity_delta": 0.24781255424022675,
+    "total_external_x_momentum": 0.7956251055002213,
+    "full_position_update_coverage": 100,
+    "exhaustive_no_overlap_pairs": 4950,
+    "impulse_events": 1,
+    "screenshots": [
+      "docs/screenshots/aiming.png",
+      "docs/screenshots/collision-after-impulse.png"
+    ]
+  },
+  "measurements": [
+    {
+      "n": 100,
+      "actual_ticks": 294,
+      "physics_ms_p50": 0.73325,
+      "physics_ms_p95": 1.36725,
+      "physics_ms_p99": 1.769,
+      "max_contacts": 52,
+      "max_islands": 50,
+      "max_island_size": 7,
+      "max_committed_bytes": 21823488,
+      "peak_observed_local_usage_bytes": 31621120
+    },
+    {
+      "n": 1000,
+      "actual_ticks": 139,
+      "physics_ms_p50": 1.15475,
+      "physics_ms_p95": 1.99,
+      "physics_ms_p99": 2.28825,
+      "max_contacts": 514,
+      "max_islands": 500,
+      "max_island_size": 8,
+      "max_committed_bytes": 21561344,
+      "peak_observed_local_usage_bytes": 34889728
+    },
+    {
+      "n": 10000,
+      "actual_ticks": 138,
+      "physics_ms_p50": 1.80625,
+      "physics_ms_p95": 2.677,
+      "physics_ms_p99": 3.06075,
+      "max_contacts": 5096,
+      "max_islands": 5000,
+      "max_island_size": 12,
+      "max_committed_bytes": 62324736,
+      "peak_observed_local_usage_bytes": 57597952
+    },
+    {
+      "n": 100000,
+      "actual_ticks": 128,
+      "physics_ms_p50": 7.01725,
+      "physics_ms_p95": 11.00475,
+      "physics_ms_p99": 12.5275,
+      "max_contacts": 49842,
+      "max_islands": 49842,
+      "max_island_size": 11,
+      "max_committed_bytes": 468320256,
+      "peak_observed_local_usage_bytes": 299565056
+    },
+    {
+      "n": 1000000,
+      "actual_ticks": 56,
+      "physics_ms_p50": 40.02,
+      "physics_ms_p95": 47.38,
+      "physics_ms_p99": 61.10775,
+      "max_contacts": 508565,
+      "max_islands": 500000,
+      "max_island_size": 4,
+      "max_committed_bytes": 4506058752,
+      "peak_observed_local_usage_bytes": 2623471616
+    }
+  ],
+  "scientific_regression": [
+    {
+      "n": 10000,
+      "profile": 9,
+      "status": "PASS",
+      "full_coverage_independent_physics": true,
+      "initial_state_identical": true,
+      "final_hash_matches_previous_run": true
+    },
+    {
+      "n": 10000,
+      "profile": 10,
+      "status": "PASS",
+      "full_coverage_independent_physics": true,
+      "initial_state_identical": true,
+      "final_hash_matches_previous_run": true
+    },
+    {
+      "n": 10000,
+      "profile": 11,
+      "status": "PASS",
+      "full_coverage_independent_physics": true,
+      "initial_state_identical": true,
+      "final_hash_matches_previous_run": false
+    },
+    {
+      "n": 100000,
+      "profile": 9,
+      "status": "PASS",
+      "full_coverage_independent_physics": true,
+      "initial_state_identical": true,
+      "final_hash_matches_previous_run": true
+    },
+    {
+      "n": 100000,
+      "profile": 10,
+      "status": "PASS",
+      "full_coverage_independent_physics": true,
+      "initial_state_identical": true,
+      "final_hash_matches_previous_run": true
+    },
+    {
+      "n": 100000,
+      "profile": 11,
+      "status": "PASS",
+      "full_coverage_independent_physics": true,
+      "initial_state_identical": true,
+      "final_hash_matches_previous_run": false
+    },
+    {
+      "n": 1000000,
+      "profile": 9,
+      "status": "PASS",
+      "full_coverage_independent_physics": true,
+      "initial_state_identical": true,
+      "final_hash_matches_previous_run": true
+    },
+    {
+      "n": 1000000,
+      "profile": 10,
+      "status": "PASS",
+      "full_coverage_independent_physics": true,
+      "initial_state_identical": true,
+      "final_hash_matches_previous_run": true
+    },
+    {
+      "n": 1000000,
+      "profile": 11,
+      "status": "PASS",
+      "full_coverage_independent_physics": true,
+      "initial_state_identical": true,
+      "final_hash_matches_previous_run": false
+    }
+  ],
+  "generational_lifecycle": {
+    "status": "PASS",
+    "objects": 32,
+    "evolving_ticks": 40,
+    "survivor_fields_exact": 496,
+    "recycled_slot": 0,
+    "old_generation": 1,
+    "new_generation": 2,
+    "old_source_epoch": 1,
+    "new_source_epoch": 2,
+    "full_population_reinitialization": false,
+    "validation_errors": 0
+  },
+  "gpu_command_tests": {
+    "status": "PASS",
+    "valid_impulse_and_neighbor_response": true,
+    "all_100_position_updates": true,
+    "stale_generation_rollback": true,
+    "stale_epoch_rollback": true,
+    "wrong_tick_rollback": true,
+    "debug_and_gbv_errors": 0,
+    "oversized_impulse_rollback": true,
+    "nan_impulse_rollback": true,
+    "out_of_range_entity_rollback": true
+  },
+  "acceptance": {
+    "A": {
+      "status": "PASS",
+      "evidence": "docs/screenshots/first-launch.png; actual moving 100-ball executable"
+    },
+    "B": {
+      "status": "PASS",
+      "evidence": "test_playground_interaction.py; actual mouse picking/drag/release; CPU independent momentum and full positions"
+    },
+    "C": {
+      "status": "PASS",
+      "evidence": "docs/screenshots/collision-after-impulse.png; focus control; real neighbor velocity change"
+    },
+    "D": {
+      "status": "PASS",
+      "evidence": "test_playground_app.py; all five populations processed; exhaustive analytic tick-2 pair counts, GPU coverage/publication guards every tick"
+    },
+    "E": {
+      "status": "PASS",
+      "evidence": "examples/playground/interaction; recording toggle/save controls and CSV/JSON agreement; no dropped samples"
+    },
+    "F": {
+      "status": "PASS",
+      "evidence": "12 scene replacements, reset SHA, controlled failed admission and state SHA, resize/minimize, shutdown accounting, GBV depths 1/2/3"
+    },
+    "G": {
+      "status": "PASS",
+      "evidence": "five actual native HWND captures in docs/screenshots; F12 also tested against real GPU backbuffer"
+    }
+  },
+  "frozen_gates": {
+    "gpu02": "UNVERIFIED",
+    "g4_automatically_approved": false,
+    "g5_started": false
+  },
+  "limits": [
+    "2D disks with sphere shading; not 3D rigid bodies.",
+    "No 60 Hz claim at 1M. Measurements are short workload-specific runs, not sustained or optical display measurements.",
+    "Independent pair fixtures prove the early scene counts. Full late-time CPU trajectory equivalence for 1M is not claimed; existing GPU validation and publication guards apply every tick.",
+    "Contact and candidate reservations are 12*N and 16*N. These are explicit reservations, not topology-independent bounds; overload rejects publication.",
+    "Existing bounded island fallback remains; this does not prove a million-body connected island.",
+    "Strict immutable source snapshots are not newly proved. Existing G4 ordered validation/publication and rollback are retained.",
+    "Scientific clustered final hashes can vary with atomic ordering in the unmodified original too. Initial hashes and independent physics invariants pass; final bit identity is not an acceptance claim.",
+    "DXGI usage is observed local usage. Managed commitment includes upload/readback and is not equivalent to physical resident VRAM.",
+    "Overview samples up to 50K rendered instances while physics processes all N; close views submit all N with GPU clipping.",
+    "Inelastic frictionless contacts dissipate motion. User impulses add energy; no artificial persistent animation."
+  ],
+  "raw_run_directories": [
+    "C:\\Users\\SHIELD SYSTEM\\Documents\\Codex\\2026-10-14\\codex-standalone-gpu-first-g0-eliminate\\outputs\\gpu-physics-engine\\playground-test-results\\app-20261016T171652Z",
+    "C:\\Users\\SHIELD SYSTEM\\Documents\\Codex\\2026-10-14\\codex-standalone-gpu-first-g0-eliminate\\outputs\\gpu-physics-engine\\playground-test-results\\20261016T171646Z",
+    "C:\\Users\\SHIELD SYSTEM\\Documents\\Codex\\2026-10-14\\codex-standalone-gpu-first-g0-eliminate\\outputs\\gpu-physics-engine\\playground-test-results\\scientific-final-20261016T165753Z"
+  ],
+  "cpu_regressions": {
+    "status": "PASS",
+    "tests": 5
+  },
+  "rebuilt_scientific_regression": {
+    "scientific": [
+      {
+        "n": 10000,
+        "profile": 9,
+        "status": "PASS",
+        "actual_ticks": 24,
+        "independent_full_coverage": true,
+        "cleanup_memory_reconciled": true
+      },
+      {
+        "n": 10000,
+        "profile": 10,
+        "status": "PASS",
+        "actual_ticks": 24,
+        "independent_full_coverage": true,
+        "cleanup_memory_reconciled": true
+      },
+      {
+        "n": 10000,
+        "profile": 11,
+        "status": "PASS",
+        "actual_ticks": 24,
+        "independent_full_coverage": true,
+        "cleanup_memory_reconciled": true
+      },
+      {
+        "n": 100000,
+        "profile": 9,
+        "status": "PASS",
+        "actual_ticks": 24,
+        "independent_full_coverage": true,
+        "cleanup_memory_reconciled": true
+      },
+      {
+        "n": 100000,
+        "profile": 10,
+        "status": "PASS",
+        "actual_ticks": 24,
+        "independent_full_coverage": true,
+        "cleanup_memory_reconciled": true
+      },
+      {
+        "n": 100000,
+        "profile": 11,
+        "status": "PASS",
+        "actual_ticks": 24,
+        "independent_full_coverage": true,
+        "cleanup_memory_reconciled": true
+      },
+      {
+        "n": 1000000,
+        "profile": 9,
+        "status": "PASS",
+        "actual_ticks": 24,
+        "independent_full_coverage": true,
+        "cleanup_memory_reconciled": true
+      },
+      {
+        "n": 1000000,
+        "profile": 10,
+        "status": "PASS",
+        "actual_ticks": 24,
+        "independent_full_coverage": true,
+        "cleanup_memory_reconciled": true
+      },
+      {
+        "n": 1000000,
+        "profile": 11,
+        "status": "PASS",
+        "actual_ticks": 24,
+        "independent_full_coverage": true,
+        "cleanup_memory_reconciled": true
+      }
+    ],
+    "lifecycle": {
+      "status": "PASS",
+      "objects": 32,
+      "evolving_ticks": 40,
+      "survivor_fields_exact": 496,
+      "recycled_slot": 0,
+      "old_generation": 1,
+      "new_generation": 2,
+      "old_source_epoch": 1,
+      "new_source_epoch": 2,
+      "full_population_reinitialization": false,
+      "validation_errors": 0
+    }
+  },
+  "shader_sha256": {
+    "add_prefix.dxil": "f89194f5d24c189856c9f4458f79289001905d87a92283981180b99f4bfe1fc4",
+    "ball_ps.dxil": "80ea9dc03b02e077e876165d47c4c755c948af50a1246bdd4bd54ba62b4db919",
+    "ball_vs.dxil": "41c9246dc9ef9822669d4488e5a93c9cdaa03654db870bff8cd822a515dae49f",
+    "classify.dxil": "946fa321a5c39d80b28a536bb6b45fab64041c21178b83ede94d484e87a53598",
+    "clear_coverage.dxil": "d561fdb7deeaa5c491bfc9c5fe41a78092370c67bd38710e3296401a934c3c1d",
+    "consume_render.dxil": "e100d2fdf484745b2098db9ae3d9329067ddc4047ecca84ae3c6a91dda5f7893",
+    "convert.dxil": "eb48ef179bf4714b83739099adfb9befb117acd03006930350a1cefafc6fca53",
+    "empty_active.dxil": "1a9e203ef3772bcbd807b86846fd1fa173feee925b3798e9c04a45261dcf0566",
+    "felt_ps.dxil": "180827652b3b96d4b1726b76c25e6d4b5cb8ffb87020dab465efbb4c2c62f011",
+    "felt_vs.dxil": "ad6aef50967be01603e43019252b011eec097270302e9054ecd9b532794820ec",
+    "full_state.dxil": "32417aa5960d2a3c657679c58d161b02f3b819bf7adaa4194b78abcc77f91011",
+    "full_state_vector.dxil": "c05ca0700fa673df9c8fec832a38644da4bd9afc4e78176fce0010b23ad1c988",
+    "gather.dxil": "4f1f0266d226e1405750b32d31fa58f7c9308984cde53134e8bc2d4f162597d3",
+    "grow_maps.dxil": "687c8955801bcb81054cf5c63dca78e1b4a9a8a49e845a743e5a9552abb7eaac",
+    "hud_ps.dxil": "74add0b46c062f38a2808079a10ec01579346e067328891774a48df648711770",
+    "hud_vs.dxil": "f254b12d589d4524d35792662625c624c6a44b764b01b79b01c13cad66310929",
+    "initialize.dxil": "48e2b0281f140b4cbe85611fb7d83cb509caad17d0decf646851546faea99555",
+    "integrate.dxil": "f91ed749df99b632045dd1179b33291f027af6937a7f12b7d2cd5a58575dacad",
+    "keys.dxil": "f6c4f618fec22b1ef82ccb818eddd9fd075616d22e396e07b3d59f5a8ccc50f1",
+    "mutate.dxil": "55e7c25d259c174fa169d184156c42b41a889768dfd610120a6e1f4567ec5360",
+    "pack_render.dxil": "21c917b6f740cb60d33d2b402cfa9a79f575521f766b2d281c7c5e4657e4b339",
+    "ph_add.dxil": "83ad26621aff9026fb25bbd8612e5898bbe064a11f1ae623ebeba7f66acb694e",
+    "ph_admit_round.dxil": "7b1e4bd1963e03452a5ca98656780aeac7cd58816e779efc4da6ad420c14a528",
+    "ph_append.dxil": "adff84da08b3622230a59e98dac17243ef5f74f7b4b8746dc7147c45db3fc38f",
+    "ph_args.dxil": "bdbc1b53b025da00542ab706000261c699a300ec82e0589a8b88f45d1a2faca5",
+    "ph_check_bodies.dxil": "7b5028d6b87995fe1db1bef9354b997678334448c3d13ee5cd183a847a636370",
+    "ph_check_contacts.dxil": "f2dbb9f436da7219d5679e4a2911782210ee24c6aa09fb100406223f0c007e26",
+    "ph_check_guards.dxil": "42cfd66667acd6291eb3094d6db4f65dd95c0f71b80b8a7a4002885c6a059264",
+    "ph_check_pairs.dxil": "001788a87f696bffb8b381d473ff4a0fddf58956e63d3e4d1ae5a22ae4c23e44",
+    "ph_clear.dxil": "488c6db96b773441cef494cbaf61da15540c83ffe9bc1f23471c5d5509bb4533",
+    "ph_color.dxil": "cf41fbb14cf05024a007a6e5667f69c63874f3c7356784967655a927570473b5",
+    "ph_color_counts.dxil": "322f15e8bfbd5453a3f6b48e0d24d86d4d9e4e3588df0bcf5712bf7c516a560c",
+    "ph_color_ranges.dxil": "6f673999df2722569b6adba237ed40634cc6e25ce2eff7fc3daf0dab81a16b2c",
+    "ph_compress.dxil": "56da3c43d4385ee7fccc6ba29260e4dfdb89b02170881393451212ec583c3ce2",
+    "ph_contact_counts.dxil": "8aa969f7241cb36aaeda5b3b53a5999b32f75622f757d335a967872e396fd890",
+    "ph_contact_scatter.dxil": "5163be421f5e4494fa1a3853b1339bd70dec62f24fd7b699c948eac96b893372",
+    "ph_execution_config.dxil": "790c44955bbea78355ee2793aa414697050833b8d798a4dfc28f0ceea01e38d1",
+    "ph_graph_clear.dxil": "2b99983282ba9b78d92348c933982d3fd930c9e658ee0d543e276e32f43cb600",
+    "ph_guards.dxil": "830e78100919e04f7d008b125c6fd9eb1227b0be112982ad346b2d91b2f7a9cd",
+    "ph_members.dxil": "8ead39bce9eb467e908518152e9f846472718a92d74dc2a874cfa2131d7322fa",
+    "ph_prepare.dxil": "4cffd0742f71b606264aadee3574ed099120865d665b495f82bec47b203b060f",
+    "ph_publish.dxil": "93c6904911f9ba8f60ed4b7f6a2910d03f827951a7992265659240fc8f83c3a3",
+    "ph_ready.dxil": "4de6ec0337cb0a6b77b9dd0c61e7645e7224038d05d00e217e66e0e079f388e1",
+    "ph_retry_admission.dxil": "278e368eb037863e95a811af3c7f4a0ecc28d69ef48577b0a2511e8b56d577f5",
+    "ph_round.dxil": "320828e5e97f9f5d775e2411c39c325149ca4cf4c5769db575acbc3f66b1a93e",
+    "ph_scan.dxil": "e4330ea7b7a3bd95f2e9568828707bb9c42b81dae79cfed903762dfaf8eae418",
+    "ph_scene.dxil": "f3de20e955e42c25810dc786d2c76dc7c638848d7104b7dd982605e503edc32f",
+    "ph_scene_one.dxil": "33e53a1964a58965b48775d0318d7dd7c0a4fe028e8e7ba5f56abe29cc4717d0",
+    "ph_solve.dxil": "8d2254249d4e25f0a3fef356dada4bebdeb187d6f7f21ecaeb2ad3007124e40c",
+    "ph_source_epoch.dxil": "9bfd23f1e8415c9b40da4c6085d1ded3b0a2818f69e5f3c8c558e9fa4ebdf896",
+    "ph_union.dxil": "7260d8113c4f49b8c768409e6bef3181a8d6d38479d4619d2279294e2045b6bb",
+    "ph_walls.dxil": "79904fba2bedf1051e5ec71f850efa865a1ba354d73bb95534dfe29f24a7d471",
+    "play_pick.dxil": "cbcd56189a9d00a876c4bc30ffd5a370de823c3d45858a179d711430d0d19d7b",
+    "play_pick_resolve.dxil": "404d09f12419551755026d15d292e84fbea95cf0c57adeb410e27f0a26afaa13",
+    "render_clear.dxil": "6a4e18c11d82d5bac79b3d60cf3b13d472c7091e8d42e295e09e3a36632164b6",
+    "render_verify.dxil": "32ab122a177f09bd43956f58ea7f1d237f5a28cb9c4c3747a23ea2142ea016d5",
+    "scan_counts.dxil": "5cca1001e7e1b71cca8e9403f35194f48c9f12f2f3376e51879922cb3e7f2411",
+    "scatter_safe.dxil": "306c36a311e1afa12ee50310cc3d6a025977984c9557a2582299a9312cc6babb",
+    "sp_add.dxil": "e9e93d6bfe9e902b0e13cadfd23fadb90714f7e6bba6e1c162852baa515421f0",
+    "sp_admit.dxil": "4e2e5abcbb16c770260eefa31a3e25496aacc60f25b6d1ac3e35c83c875cd865",
+    "sp_clear.dxil": "a12d04577e881ae62180dbd589ef65dcb52e88d2e96097049ed96f8c5e373e00",
+    "sp_compress.dxil": "a89a4c8d64ac27ebd3040c193a95c085c3a77a03b3e9a7c6d57b1d3fdf81224a",
+    "sp_count.dxil": "9944f614146562e0d36db8418153ec558c0ace273169ab4856fa5078e5a8912e",
+    "sp_emit.dxil": "41d0852d3725aedd273c741471a58aa886ac82e691631cb168e7bed2c3b2c1c1",
+    "sp_fixture.dxil": "264057907619d396182013a68bbebf4bcea874691c89eed197f305b5a8e059c7",
+    "sp_g4_occupancy.dxil": "cfe2ca03e44d14547d978caa8f08101d80b6e9470126b89e898e341f045f3bd6",
+    "sp_graph_stats.dxil": "2df2b5d73876b7e0ef4b636bc4ef4c5d4b93cadef47bc6650d7465b8aa5b1d00",
+    "sp_guards.dxil": "c5a2157a4ee8b32068922bc0a24fa9b8ea41317cb8318216e1b431c76f42c9d2",
+    "sp_hash.dxil": "64285373595e20acfa999a9b0b9dd7ffe067e6a5446ec5bdff8f2ed7bde7dcd9",
+    "sp_hash_counts.dxil": "1a5806265545ef224a4e8465ae3a74442d073345b8cd9f967cd8907faf910963",
+    "sp_hash_offsets.dxil": "fdce8831275972564bc60acce7bbb24d4443cfcae3bf735394276a7ce26d6062",
+    "sp_hash_scatter.dxil": "3b95e78442b02cab5a146e4cc70c584bec918356f80a4f44eac0e3494600f08c",
+    "sp_keys.dxil": "5525d61e8b8de02d7ee824d834df2d2200e8c8e9eb6ea4c69aae81baca884f1b",
+    "sp_mapping.dxil": "8d82af66161e39606c5ff1bb7b4d3fc79c302f5fa3d04c4916b61a4c3a7febb9",
+    "sp_poison.dxil": "a042b2772fe36844d1f8d1baaf01e6ffca9694ace78e3ae8cc570e2385dd57f9",
+    "sp_radix_local.dxil": "b77d2bebc00b7ca436f929adb257069349531a4d0822ac034092af174be211f6",
+    "sp_radix_scatter.dxil": "4bd4eccc1bbe5df8f026ad1d2a5b64c04b60c90d021165848dea9e4e6d290ebc",
+    "sp_ranges.dxil": "0fb7625a622bc21dc0865c02ffba8a2f5364cc3db454879fadfe5a44ab660a72",
+    "sp_scan.dxil": "664458b75cc3a8e7fc1a007777c9005cf4acc63c38e494eb0919e02c80ec2dee",
+    "sp_synthetic_counts.dxil": "d1ce347e7f9af0feea1bcc5f6ba04927bbd422f58d7064750d256930e2fe1dcb",
+    "sp_union.dxil": "e11a57e06614068e81568080caecb5de56822675238b27e44bdac2821666aa25",
+    "sp_validate.dxil": "f726ce508e43976824aa195fc9a3f393b0211e764619ca7c26ef6d8d7803dd86",
+    "update_motion.dxil": "f2a1ecdf029e983a4a90159264b7ec7231afee01fff34408de74b642b5482a7a",
+    "vertex.dxil": "95923a2cd4278950a416850202ee25130e64a9ffc39b008fe2caa9aa8e46412b"
+  },
+  "preserved_scientific_source_sha256": {
+    "billiards.hlsl": "8ecc5026b4b707a727db661811b15e2f708c69363774e24e2dca9dc0196e8775",
+    "billiards-schema.json": "157fd43f19bdbd30cbf6a54ad66c15490029906f95ca4d484fd2d818128f0b3e",
+    "projected_solver.hlsl": "adc785e99f87ca8b642ef58e648864b0fc74ba92ecd9d32050ac5e9d9294d1cf"
+  }
+}

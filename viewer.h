@@ -6,7 +6,7 @@ typedef struct ViewerConfig {
  uint32_t n,capacity,profile,depth,mode,vsync,separate_queue,snapshot;
  uint32_t width,height,steps,warmup,interactive,debug,visual_stride;
  uint32_t capture_every,self_test,execution,cell_mode,source_epoch,tick_base;
- uint64_t budget;
+ uint32_t ui_mode;uint64_t budget;
  const char *output_path,*capture_prefix;
 } ViewerConfig;
 
