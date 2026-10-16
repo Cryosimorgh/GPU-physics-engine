@@ -1,0 +1,50 @@
+// Actual GPU SoA disk positions rendered as lit sphere impostors (2D physics).
+ByteAddressBuffer bodies:register(t0);
+ByteAddressBuffer state:register(t1);
+ByteAddressBuffer entityMaps:register(t2);
+RWByteAddressBuffer diagnostics:register(u0);
+#include "viewer-cbuffer.hlsl"
+// Shared generated metadata contract; no duplicate offsets.
+#include "execution-layout.h"
+uint colorHash(uint v){v^=v>>16;v*=0x7feb352du;v^=v>>15;v*=0x846ca68bu;return v^(v>>16);}
+float scalar(uint i,uint field){return asfloat(bodies.Load(4*(field*entityCapacity+i)));}
+struct BallVertex {float4 position:SV_Position;float2 circle:TEXCOORD0;nointerpolation uint stable:TEXCOORD1;};
+BallVertex ball_vs(uint vertex:SV_VertexID,uint instance:SV_InstanceID){
+ BallVertex o;float2 corners[6]={float2(-1,-1),float2(-1,1),float2(1,1),float2(-1,-1),float2(1,1),float2(1,-1)};
+ uint i=instance*visualStride;o.stable=i<objectCount?bodies.Load(4*(15*entityCapacity+i)):0;
+ float2 p=i<objectCount?float2(scalar(i,0),scalar(i,1)):float2(1e20,1e20);
+ float radius=i<objectCount?scalar(i,8):0;
+ float2 extent=max(float2(radius/halfWidth,radius/halfHeight),float2(2*minPixelRadius/max(1u,pixelWidth),2*minPixelRadius/max(1u,pixelHeight)));
+ o.circle=corners[vertex];o.position=float4((p-float2(cameraX,cameraY))/float2(halfWidth,halfHeight)+o.circle*extent,0,1);return o;
+}
+float3 ballColor(uint id){
+ float3 palette[8]={float3(.94,.73,.08),float3(.12,.37,.85),float3(.85,.13,.12),float3(.42,.18,.65),float3(.95,.37,.07),float3(.10,.55,.30),float3(.52,.12,.19),float3(.06,.065,.075)};
+ return id%16u==0u?float3(.93,.94,.92):palette[(id-1u)%8u];
+}
+float4 ball_ps(BallVertex i):SV_Target{
+ float d=dot(i.circle,i.circle);if(d>1)discard;float3 normal=float3(i.circle,sqrt(max(0,1-d)));float3 light=normalize(float3(-.45,.65,1));
+ float3 base=ballColor(i.stable);if(i.stable%16u>=9u&&abs(i.circle.y)>.38)base=float3(.91,.92,.90);
+ float diffuse=.18+.82*max(0,dot(normal,light));float specular=pow(max(0,dot(normal,normalize(light+float3(0,0,1)))),72);
+ if((renderFlags&1u)!=0u&&i.stable%16u!=0u){float disk=dot(i.circle-float2(0,.03),i.circle-float2(0,.03));if(disk<.085)base=float3(.92,.93,.91);if(disk<.013)base=float3(.08,.085,.09);}
+ return float4(base*diffuse+specular*.7,1);
+}
+struct BackgroundVertex{float4 position:SV_Position;float2 world:TEXCOORD0;};
+BackgroundVertex felt_vs(uint id:SV_VertexID){BackgroundVertex v;float2 clip=float2(id==2u?3:-1,id==1u?3:-1);v.position=float4(clip,.9,1);v.world=float2(cameraX,cameraY)+clip*float2(halfWidth,halfHeight);return v;}
+float4 felt_ps(BackgroundVertex i):SV_Target{
+ int2 cell=int2(floor(i.world/4));float2 local=i.world-float2(cell)*4;uint table=cell.x>=0&&cell.y>=0?uint(cell.y)*tableColumns+uint(cell.x):0xffffffffu;
+ if(cell.x<0||cell.y<0||uint(cell.x)>=tableColumns||table>=tableCount)return float4(.018,.028,.035,1);
+ bool felt=local.x>=0&&local.x<=1.5&&local.y>=0&&local.y<=1;
+ bool rail=local.x>=-.035&&local.x<=1.535&&local.y>=-.035&&local.y<=1.035;
+ if(felt){float weave=.96+.04*sin(local.x*500)*sin(local.y*500);return float4(float3(.022,.20,.135)*weave,1);}
+ return rail?float4(.21,.105,.045,1):float4(.018,.028,.035,1);
+}
+[numthreads(64,1,1)]void render_clear(uint lane:SV_GroupIndex){if(lane<64u)diagnostics.Store(4*lane,0);}
+[numthreads(256,1,1)]void render_verify(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
+ uint sample=group.x*256u+lane;if(sample>=instanceCount)return;uint i=sample*visualStride;if(i>=objectCount){diagnostics.InterlockedOr(0,1);return;}
+ uint stable=bodies.Load(4*(15*entityCapacity+i));if(stable>=entityCapacity){diagnostics.InterlockedOr(0,2);return;}float2 p=float2(scalar(i,0),scalar(i,1));float radius=scalar(i,8);
+ if(entityMaps.Load(8*stable)!=i||entityMaps.Load(8*stable+4)==0u||!all(isfinite(p))||!isfinite(radius)||radius<=0)diagnostics.InterlockedOr(0,2);
+ diagnostics.InterlockedAdd(4,1);if(all(abs(p-float2(cameraX,cameraY))<=float2(halfWidth,halfHeight)+radius))diagnostics.InterlockedAdd(8,1);
+ diagnostics.InterlockedXor(28,colorHash(stable)^colorHash(entityMaps.Load(8*stable+4)));
+ if(sample==0u){uint generation=state.Load(G4_SOURCE_GENERATION_BYTE),physicsError=state.Load(0);diagnostics.Store(12,generation);diagnostics.Store(16,physicsError);diagnostics.Store(20,expectedGeneration);diagnostics.Store(24,attemptTick);if(!physicsError&&generation!=expectedGeneration)diagnostics.InterlockedOr(0,4);if(state.Load(G4_SOURCE_EPOCH_BYTE)!=expectedEpoch)diagnostics.InterlockedOr(0,8);diagnostics.Store(32,stable);for(uint word=0;word<G4_V_CAMERA_WORDS;word++)diagnostics.Store(64+4*word,cameraWord(word));}
+ if(sample+1u==instanceCount)diagnostics.Store(36,stable);
+}

@@ -1,0 +1,9 @@
+.zig-cache/
+zig-cache/
+__pycache__/
+evidence/
+*.log
+*.pdb
+*.bin
+*.csv
+interactive-*.json

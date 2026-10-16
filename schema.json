@@ -1,0 +1,12 @@
+{"version":1,"fields":["x","y","vx","vy","angle","omega","inv_mass","inv_i","radius","rest","energy","pad","kind","sleep","active","id"],"tile":32,"threads":256,"guard_words":64,"command_words":8,"command_capacity":1024,"constants":["n","capacity","layout","strideActive","verify","stage","inputLayout","inputCapacity","scanCount","scanInput","scanOutput","scanParent","commandCount","epoch","unused0","unused1"],"buffers":[
+{"name":"components","kind":0,"bytes":"record_bytes*cap+guard_bytes"},
+{"name":"identity_maps","kind":0,"bytes":"12*cap+guard_bytes"},
+{"name":"active_flags_indices_count","kind":0,"bytes":"4*(2*cap+1)+guard_bytes"},
+{"name":"active_prefix_scratch","kind":0,"bytes":"4*(prefixWords(cap)+guard_words+cap)+guard_bytes"},
+{"name":"coverage_counters","kind":0,"bytes":"32*cap+guard_bytes"},
+{"name":"key_checksum_render_results","kind":0,"bytes":"28*cap+guard_bytes"},
+{"name":"structural_control","kind":0,"bytes":"4*(4+command_capacity)+guard_bytes"},
+{"name":"validation_readback","kind":2,"bytes":"max(record_bytes*cap,4*(4+command_capacity))+guard_bytes"},
+{"name":"command_upload","kind":1,"bytes":"command_words*4*command_capacity"},
+{"name":"canonical_conversion_scratch","kind":0,"bytes":"record_bytes*cap"}
+]}

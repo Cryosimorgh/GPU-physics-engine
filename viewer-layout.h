@@ -1,0 +1,40 @@
+// Generated viewer ABI SHA256 9c33e204f5e9cc0df35e8c1ca730cd5a811c061b0103e4cabbb7560aedb2e20f
+#ifndef G4_VIEWER_LAYOUT_H
+#define G4_VIEWER_LAYOUT_H
+#define G4_V_VERSION 1u
+#define G4_V_CAMERA_WORDS 32u
+#define G4_V_HUD_PIXEL_STRIDE 8u
+#define G4_V_HUD_PIXELS 16384u
+#define G4_V_OBJECTCOUNT 0u
+#define G4_V_ENTITYCAPACITY 1u
+#define G4_V_VISUALSTRIDE 2u
+#define G4_V_INSTANCECOUNT 3u
+#define G4_V_CAMERAX 4u
+#define G4_V_CAMERAY 5u
+#define G4_V_HALFWIDTH 6u
+#define G4_V_HALFHEIGHT 7u
+#define G4_V_PIXELWIDTH 8u
+#define G4_V_PIXELHEIGHT 9u
+#define G4_V_EXPECTEDGENERATION 10u
+#define G4_V_RENDERFLAGS 11u
+#define G4_V_TABLECOLUMNS 12u
+#define G4_V_TABLECOUNT 13u
+#define G4_V_EXPECTEDEPOCH 14u
+#define G4_V_ATTEMPTTICK 15u
+#define G4_V_MINPIXELRADIUS 16u
+#define G4_V_UNUSED17 17u
+#define G4_V_UNUSED18 18u
+#define G4_V_UNUSED19 19u
+#define G4_V_UNUSED20 20u
+#define G4_V_UNUSED21 21u
+#define G4_V_UNUSED22 22u
+#define G4_V_UNUSED23 23u
+#define G4_V_UNUSED24 24u
+#define G4_V_UNUSED25 25u
+#define G4_V_UNUSED26 26u
+#define G4_V_UNUSED27 27u
+#define G4_V_UNUSED28 28u
+#define G4_V_UNUSED29 29u
+#define G4_V_UNUSED30 30u
+#define G4_V_UNUSED31 31u
+#endif
