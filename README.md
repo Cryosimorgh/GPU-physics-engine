@@ -1,66 +1,65 @@
-# GPU Physics Playground
+# GPU Physics Billiards
 
-A playable Windows x64 GPU physics sandbox using Zig, C, HLSL and D3D12. Real 2D disk collisions are rendered as shaded spheres in one continuous arena.
+A standalone Windows D3D12 billiards demo built with Zig, C and HLSL. The default
+is one table with exactly 16 stationary balls: one white cue ball and 15 numbered
+object balls. GPU SoA storage, spatial indexing and the existing projected contact
+solver advance the game at a fixed 1/128-second timestep.
 
-Download [GPUPhysicsPlayground-Windows-x64.zip](dist/GPUPhysicsPlayground-Windows-x64.zip), extract **everything** into a writable folder and run **Launch.bat** or **GPUPhysicsPlayground.exe**. No development tools are required to run. Requires Windows 10/11 x64, D3D12 shader double precision and sufficient current DXGI memory budget. The CPU target is baseline x86-64.
+The portable build is `dist/GPUPhysicsBilliards-Windows-x64.zip`: extract
+**everything** into a writable folder and run **Launch.bat**. Requires
+Windows 10/11 x64, D3D12 shader double precision and sufficient current GPU memory
+budget. No development tools are needed to play.
 
-![Actual first-launch executable](docs/screenshots/first-launch.png)
+![Actual executable, initial stationary rack](docs/billiards/initial-stationary-rack.png)
 
-Left-click selects; drag aims and release applies a bounded impulse at the next global physics tick. Right-drag pans, wheel zooms, F focuses, Space pauses, Period steps, R resets, Home fits the arena and Esc deselects then closes. Adjust shot strength in the statistics panel. H hides the interface. Population presets provide 100/1K previews and genuine 10K/100K/1M simulations. Original independent-table presets remain under **Scene → Scientific Benchmarks**.
+Click the white cue ball, drag to aim, release to strike. The arrow shows shot
+direction and delta velocity. Shots are blocked while balls move unless Settings
+explicitly enables sandbox shots. Space pauses, Period steps one global tick,
+R resets, Home fits the table and F focuses the cue. Right-drag pans; wheel zooms.
+The panel shows engine FPS, physics TPS, GPU times, contacts, iterations and memory.
 
-The Dear ImGui interface has scene/population/physics/recording/settings menus, collapsible workload statistics and rolling timing charts. F9 starts/stops recording, F10 asynchronously saves, and F12 captures the actual backbuffer. Results are written beside the executable in unique `results/session-*` directories. [Usage, scene parameters and limits](PLAYGROUND_README.txt) describe the CSV/JSON data and controls.
+The corrected model uses new-impact restitution, cushion tangential friction,
+sliding-to-rolling transition and bounded rolling resistance. Balls stop exactly.
+It is a planar approximation without pockets, scoring, vertical motion or cue
+elevation. Materials are chosen parameters rather than a calibrated commercial
+table. See [usage and limits](BILLIARDS_README.txt) and the included
+`BILLIARDS_PHYSICS_CORRECTION.md` for qualification and equations.
 
-## Measured execution
+[Actual gameplay capture](docs/billiards/gameplay.mp4) shows aiming, a break,
+collision transfer, a later rail shot and stopping. Images/video come from
+fence-completed copies of the executable's actual D3D12 backbuffer. Video encoding
+cadence is not displayed FPS. Formal GPU-02 remains **UNVERIFIED**; no G5 work or
+new formal gate approval is claimed.
 
-The packaged executable was extracted into a separate directory containing spaces, launched from an unrelated working directory with only Windows System32 on PATH, and exercised through native controls. These are short automated workload runs on an RTX 4070 Ti SUPER, not a promise of sustained frame rate or a physical display measurement. GPU physics timing includes the complete existing physics pipeline.
+The analytical suite passes 10,000 stationary-rack GPU ticks, elastic/inelastic
+and oblique impacts, rail materials, passive energy/rolling, persistent contacts,
+sleep/wake and rejected-command rollback. Its complete run accepts 10,563 ticks
+and publishes 169,008 object updates. Nine original scientific 10K/100K/1M
+fixture combinations pass their independent full-coverage oracle. Seven matched
+before/after process pairs per population find no >5% p95 regression in the tested
+scientific mixed-contact profile; this is separate from game performance.
 
-| Real balls | Actual ticks | Maximum contact constraints | GPU physics p50 / p95 / p99 ms | Peak observed local MiB |
-|---:|---:|---:|---:|---:|
-| 100 | 294 | 52 | 0.73 / 1.37 / 1.77 | 30.2 |
-| 1,000 | 139 | 514 | 1.15 / 1.99 / 2.29 | 33.3 |
-| 10,000 | 138 | 5,096 | 1.81 / 2.68 / 3.06 | 54.9 |
-| 100,000 | 128 | 49,842 | 7.02 / 11.00 / 12.53 | 285.7 |
-| 1,000,000 | 56 | 508,565 | 40.02 / 47.38 / 61.11 | 2501.9 |
+Scientific scenes remain under Scene and are labeled synthetic. Their original
+seeds, drives and contact model remain. The previous continuous arena and its
+[historical documentation](PLAYGROUND_HISTORY.md) are retained, along with both
+older portable distributions.
 
-All submitted physics ticks passed existing GPU coverage, validation and all-N publication checks. Exact independently calculated tick-2 contact counts are 50, 500, 5,000, 49,320 and 500,000. A separate mouse-driven 100-ball test verifies actual selection, impulse propagation, external momentum, every position update and all 4,950 non-overlap pairs. It also verifies that paused statistics retain the latest completed tick. Nine original scientific population/profile combinations pass their independent full-coverage physics oracle, and the evolving generational lifecycle test passes. GPU validation passes at 1/2/3 frames in flight; stale command generation/epoch/tick tests reject with source rollback.
-
-See [verification results](PLAYGROUND_VERIFICATION.json), [raw example recordings](examples/playground), [aiming](docs/screenshots/aiming.png), [collision close-up](docs/screenshots/collision-after-impulse.png), [expanded statistics](docs/screenshots/statistics-expanded.png), and [1M scene](docs/screenshots/million-balls.png). Screenshots are actual running-executable captures.
-
-## Build and reproduce
-
-Install Zig 0.15.2, Python 3 and a Windows SDK with D3D12 headers/UCRT/DXC. Scripts discover SDK paths; RTK and Visual Studio are not required. Pillow is needed only by the screenshot automation tests.
+Build with Zig 0.15.2, Python 3 and a Windows SDK providing DXC/D3D12/UCRT:
 
 ```powershell
-python build_playground.py --tests
+python build_billiards.py --tests
+python test_billiards_physics.py
 .\zig-out\bin\playground_gpu_tests.exe
-python test_playground_interaction.py
-python package_playground.py
-python test_playground_app.py
-```
-
-To run the original independent scientific oracle and lifecycle checks:
-
-```powershell
-python build_viewer.py --host-only --reference-cli
-python build_viewer.py --host-only --lifecycle
-foreach ($n in 10000,100000,1000000) {
-  foreach ($profile in 9,10,11) {
-    .\zig-out\bin\viewer.exe --n $n --profile $profile --steps 24 --quiet --out "scientific-$n-$profile.json"
-  }
-}
-New-Item -ItemType Directory -Force lifecycle-results
-.\zig-out\bin\g4_lifecycle.exe lifecycle-results
+zig test tests.zig -O ReleaseSafe
 python test_playground_regression.py
+python test_billiards_gameplay.py
+python package_billiards.py
+python test_billiards_package.py
 ```
 
-`package_playground.py` audits PE imports and writes binary/dependency SHA256 plus source/vendor hashes inside the ZIP. Dear ImGui v1.90.9 is pinned and statically linked; its MIT license is included.
-
-## Limits and preserved gates
-
-The fixed global timestep remains 1/128. The projected solver and original scientific scene definitions are unchanged. There are no initial playground overlaps; world dimensions scale with population, approaching 34.9% initial area occupancy. Contacts are inelastic and frictionless, so motion dissipates; the user can add energy with real impulses.
-
-Contact/candidate reservations are checked 12*N/16*N allocations, not universal topology bounds. Overload or nonconvergence explicitly rejects publication. The existing bounded large-island fallback remains; no giant connected-island claim or G5 optimization is made. Scene changes require temporary old+new memory and preserve the active state if admission fails. Overview can sample 50K rendered instances while all N remain simulated; submitted rendering and active-body counts are separate.
-
-**Display FPS and formal G4 GPU-02 remain UNVERIFIED.** Engine render FPS, physics TPS and Present rate are separately labeled. Strict immutable snapshot isolation is not newly proved; existing ordered validation/publication is preserved. Clustered scientific runs can differ in final hashes due to ordering in the original implementation too; deterministic initial hashes and independent invariants are retained. This app does not automatically approve G4 or start G5.
-
-The earlier [benchmark-only ZIP](dist/GPUPhysicsBench-Windows-x64.zip) is preserved unchanged; [its documentation](BENCHMARK_README.md) explains those historical independent-table workloads. Frozen G0–G4 evidence remains preserved separately; it is not replaced by the playground results.
+Pillow and ffmpeg are needed only for automated media capture. Run GPU tests
+serially. CSV/JSON recordings use unique `results/session-*` directories.
+The portable builder includes media, licenses, per-file hashes and source/build
+hashes, plus reports and example results when available locally. Per the upload
+scope, reports/raw measurements and the complete measured portable ZIP stay local;
+the repository contains engine source, shaders, executable, tests and media.

@@ -23,7 +23,7 @@ def shot(h,name):
  u.SetForegroundWindow(h);time.sleep(.2);rect=W.RECT();u.GetWindowRect(h,C.byref(rect));ImageGrab.grab(bbox=(rect.left,rect.top,rect.right,rect.bottom)).save(out/(name+'.png'))
 states=[]
 for impulse in [False,True]:
- base=out/('impulse' if impulse else 'control');base.mkdir();f=(base/'run.log').open('w');p=subprocess.Popen([str(r/'zig-out/bin/GPUPhysicsPlayground.exe'),'--quiet','--self-test','30','--output-dir',str(base)],cwd=r,stdout=f,stderr=subprocess.STDOUT)
+ base=out/('impulse' if impulse else 'control');base.mkdir();f=(base/'run.log').open('w');p=subprocess.Popen([str(r/'zig-out/bin/GPUPhysicsPlayground.exe'),'--n','100','--profile','12','--quiet','--self-test','30','--output-dir',str(base)],cwd=r,stdout=f,stderr=subprocess.STDOUT)
  try:
   h=find(p);time.sleep(.6)
   if impulse:

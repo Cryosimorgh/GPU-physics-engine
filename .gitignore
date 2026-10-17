@@ -24,4 +24,12 @@ third_party/imgui/misc/
 third_party/imgui/imgui_demo.cpp
 imgui.ini
 playground-test-results/
+billiards-test-results/
+dist/GPUPhysicsBilliards-Windows-x64*/
 dist/GPUPhysicsPlayground-Windows-x64*/
+
+# Local correction evidence; upload scope is engine files/tests/media only.
+BILLIARDS_PHYSICS_CORRECTION.md
+BILLIARDS_VERIFICATION.json
+examples/billiards/
+dist/GPUPhysicsBilliards-Windows-x64.zip*

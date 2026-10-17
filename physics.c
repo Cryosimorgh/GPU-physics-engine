@@ -2,14 +2,15 @@
 #include "physics.h"
 #include "physics-layout.h"
 #include "execution-layout.h"
+#include "pool-layout.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <limits.h>
 #include <float.h>
-enum {SCENE=41,GUARDS,CLEAR,PREPARE,ROUND,APPEND,WALLS,ADMIT,GRAPH_CLEAR,UNION,COMPRESS,COUNTS,SCAN,ADD,MEMBERS,SCATTER,ARGS,COLOR,COLOR_COUNTS,COLOR_RANGES,READY,SOLVE,CHECK_CONTACTS,CHECK_BODIES,CHECK_PAIRS,CHECK_GUARDS,PUBLISH,EXEC_CONFIG,RETRY,SCENE_ONE,SOURCE_EPOCH};
-static const char *names[]={"ph_scene","ph_guards","ph_clear","ph_prepare","ph_round","ph_append","ph_walls","ph_admit_round","ph_graph_clear","ph_union","ph_compress","ph_contact_counts","ph_scan","ph_add","ph_members","ph_contact_scatter","ph_args","ph_color","ph_color_counts","ph_color_ranges","ph_ready","ph_solve","ph_check_contacts","ph_check_bodies","ph_check_pairs","ph_check_guards","ph_publish","ph_execution_config","ph_retry_admission","ph_scene_one","ph_source_epoch"};
+enum {SCENE=41,GUARDS,CLEAR,PREPARE,ROUND,APPEND,WALLS,ADMIT,GRAPH_CLEAR,UNION,COMPRESS,COUNTS,SCAN,ADD,MEMBERS,SCATTER,ARGS,COLOR,COLOR_COUNTS,COLOR_RANGES,READY,SOLVE,CHECK_CONTACTS,CHECK_BODIES,CHECK_PAIRS,CHECK_GUARDS,PUBLISH,EXEC_CONFIG,RETRY,SCENE_ONE,SOURCE_EPOCH,POOL_POSITIONS};
+static const char *names[]={"ph_scene","ph_guards","ph_clear","ph_prepare","ph_round","ph_append","ph_walls","ph_admit_round","ph_graph_clear","ph_union","ph_compress","ph_contact_counts","ph_scan","ph_add","ph_members","ph_contact_scatter","ph_args","ph_color","ph_color_counts","ph_color_ranges","ph_ready","ph_solve","ph_check_contacts","ph_check_bodies","ph_check_pairs","ph_check_guards","ph_publish","ph_execution_config","ph_retry_admission","ph_scene_one","ph_source_epoch","ph_pool_positions"};
 struct Physics {StorageDevice *d;PhysicsConfig cfg;Spatial *sp;SpatialOutput output;uint64_t h[8],owned[5],bytes[5],commit[5],total;uint32_t k[16],tail,end;double allocation_us;int poisoned,has_tick;uint32_t last_tick,execution_mode,cell_mode,source_epoch,work_budget,quiet_ticks,cached_tick,header[G4_DESCRIPTOR_WORDS];int header_valid;double retry_blocking_us;};
 static int last_error;
 int ph_error(void){return last_error;}
@@ -22,18 +23,18 @@ static int dispatch(Physics *p,int pass,uint32_t count){uint32_t x,y;if(!s_dispa
 static int indirect(Physics *p,int pass,uint32_t offset){uint32_t saved=p->k[15];int ok=1;if(pass==SOLVE&&p->execution_mode){p->k[15]=0;ok=bind(p)&&s_indirect_count(p->d,pass,p->owned[3],G4_INDIRECT_DISPATCH_BYTE,G4_INDIRECT_COUNT_BYTE);}else if(pass==SOLVE){for(uint32_t chunk=0;chunk<G3_ARGS_CHUNKS(p->cfg.n,p->cfg.flags);chunk++){p->k[15]=chunk*G3_SOLVER_CHUNK_GROUPS;if(!bind(p)||!s_indirect(p->d,pass,p->owned[3],G3_INDIRECT_HEADER_BYTES+G3_INDIRECT_STRIDE_BYTES*chunk)||!s_split(p->d,G3_DISCOVERY_ROUNDS*G3_ARGS_CHUNKS(p->cfg.n,p->cfg.flags))){ok=0;break;}}}else{p->k[15]=0;ok=bind(p)&&s_indirect(p->d,pass,p->owned[3],offset);}p->k[15]=saved;return ok;}
 static int scan(Physics *p,uint32_t count,uint32_t input,uint32_t output,int input32){uint32_t ns[8],is[8],os[8],depth=0,tail=p->tail,old[16];memcpy(old,p->k,sizeof(old));ns[0]=count;is[0]=input;os[0]=output;while(ns[depth]>256){uint32_t next=(ns[depth]+255)/256;depth++;if(depth>=8)return 0;ns[depth]=next;is[depth]=tail;tail+=8*next;os[depth]=tail;tail+=8*next;}if(tail>p->end)return 0;for(uint32_t j=0;j<=depth;j++){p->k[6]=(old[6]&255)|((j==0&&input32)?256:0);p->k[8]=ns[j];p->k[9]=is[j];p->k[10]=os[j];p->k[11]=j<depth?is[j+1]:UINT32_MAX;if(!dispatch(p,SCAN,ns[j]))return 0;}for(uint32_t j=depth;j-->0;){p->k[8]=ns[j];p->k[10]=os[j];p->k[11]=os[j+1];if(!dispatch(p,ADD,ns[j]))return 0;}memcpy(p->k,old,sizeof(old));return 1;}
 void ph_close(Physics *p){if(!p)return;sp_close(p->sp);for(int i=0;i<5;i++)if(p->owned[i]&&!s_retire(p->d,p->owned[i]))abort();s_collect(p->d);free(p);}
-Physics *ph_open(StorageDevice *d,const uint64_t *base,const PhysicsConfig *cfg){last_error=1;if(!cfg||!cfg->n||cfg->n>cfg->capacity||cfg->capacity>UINT32_MAX/G3_METADATA_STRIDE||cfg->design>1||cfg->fixture>12||(cfg->flags&~15u)||!isfinite(cfg->dt)||cfg->dt<FLT_MIN||!cfg->iterations||cfg->iterations>16384||!cfg->sleep_frames||!cfg->max_bodies||cfg->max_bodies>65534||!cfg->max_work)return NULL;
+Physics *ph_open(StorageDevice *d,const uint64_t *base,const PhysicsConfig *cfg){last_error=1;if(!cfg||!cfg->n||cfg->n>cfg->capacity||cfg->capacity>UINT32_MAX/G3_METADATA_STRIDE||cfg->design>1||cfg->fixture>13||(cfg->fixture==13&&cfg->n!=16)||(cfg->flags&~15u)||!isfinite(cfg->dt)||cfg->dt<FLT_MIN||!cfg->iterations||cfg->iterations>16384||!cfg->sleep_frames||!cfg->max_bodies||cfg->max_bodies>65534||!cfg->max_work)return NULL;
  if(G3_DISCOVERY_ROUNDS*G3_ARGS_CHUNKS(cfg->n,cfg->flags)>G3_MAX_STREAM_SPLITS)return NULL;
  Physics *p=calloc(1,sizeof(*p));if(!p)return NULL;p->d=d;p->cfg=*cfg;p->source_epoch=1;uint64_t meta=G3_METADATA_END((uint64_t)cfg->capacity),tmp,total=meta;
  for(uint64_t n=cfg->capacity;n>256;){n=(n+255)/256;if(!mul(n,16,&tmp)||!add(total,tmp,&total))goto fail;}
  if(meta>UINT32_MAX||total>UINT32_MAX)goto fail;p->tail=(uint32_t)meta;p->end=(uint32_t)total;
- if(!mul(cfg->capacity,64,&tmp)||!add(tmp,256,&p->bytes[0])||!add(total,256,&p->bytes[1])||!mul(cfg->contacts,G3_ARENA_STRIDE,&tmp)||!add(tmp,256,&p->bytes[2]))goto fail;p->bytes[3]=G3_ARGS_END((uint64_t)cfg->n,cfg->flags)+G3_GUARD_BYTES;p->bytes[4]=p->bytes[0];for(int i=1;i<4;i++)if(p->bytes[i]>p->bytes[4])p->bytes[4]=p->bytes[i];for(int i=0;i<5;i++){if(!p->bytes[i]||p->bytes[i]>UINT32_MAX)goto fail;p->commit[i]=s_allocation(d,p->bytes[i],i==4?2:0);if(p->commit[i]==UINT64_MAX||!add(p->total,p->commit[i],&p->total))goto fail;}
+ if(!mul(cfg->capacity,64,&tmp)||!add(tmp,256,&p->bytes[0])||!add(total,256,&p->bytes[1])||!mul(cfg->contacts,G3_ARENA_STRIDE,&tmp)||!add(tmp,256,&p->bytes[2]))goto fail;if(cfg->fixture==13&&!add(p->bytes[1],POOL_EXTENSION_BYTES,&p->bytes[1]))goto fail;p->bytes[3]=G3_ARGS_END((uint64_t)cfg->n,cfg->flags)+G3_GUARD_BYTES;p->bytes[4]=p->bytes[0];for(int i=1;i<4;i++)if(p->bytes[i]>p->bytes[4])p->bytes[4]=p->bytes[i];for(int i=0;i<5;i++){if(!p->bytes[i]||p->bytes[i]>UINT32_MAX)goto fail;p->commit[i]=s_allocation(d,p->bytes[i],i==4?2:0);if(p->commit[i]==UINT64_MAX||!add(p->total,p->commit[i],&p->total))goto fail;}
  last_error=2;if(!s_admit(d,p->total,cfg->budget))goto fail;double start=s_clock();last_error=3;for(int i=0;i<5;i++){p->owned[i]=s_new(d,p->bytes[i],i==4?2:0,"G3 transactional physics");if(!p->owned[i])goto fail;}
  p->sp=sp_open(d,base,cfg->n,cfg->capacity,cfg->design,0,1,cfg->pairs,65536,cfg->budget);if(!p->sp){last_error=10+sp_error();goto fail;}p->output=sp_output(p->sp);sp_physics(p->sp,p->owned[0],p->owned[1],cfg->dt,((cfg->flags&8)?8192:0)|(cfg->fixture>=9?G4_PRECISE_CONTACT_POLICY_FLAG:0));
  p->h[0]=base[0];p->h[1]=p->owned[0];p->h[2]=base[1];p->h[3]=p->output.buffer;p->h[4]=p->owned[1];p->h[5]=p->owned[2];p->h[6]=p->owned[3];p->h[7]=base[8];
  uint32_t dt;memcpy(&dt,&cfg->dt,4);uint32_t k[]={cfg->n,cfg->capacity,cfg->contacts,cfg->pairs,dt,cfg->flags,0,cfg->fixture,p->output.pairs_byte,p->output.contacts_indices_byte,0,cfg->iterations,cfg->sleep_frames,cfg->max_bodies,cfg->max_work,cfg->kick_slot};memcpy(p->k,k,sizeof(k));
- if(cfg->fixture==12){void *zero=s_map(d,base[8],0);if(!zero)goto fail;memset(zero,0,32);if(!s_unmap(d,base[8],32))goto fail;}
- last_error=4;for(int i=0;i<31;i++){char name[128];snprintf(name,sizeof(name),"%s.dxil",names[i]);FILE *f=bench_asset_open(name);if(!f)goto fail;fseek(f,0,SEEK_END);long len=ftell(f);if(len<=0||len>16*1024*1024){fclose(f);goto fail;}rewind(f);void *data=malloc((size_t)len);if(!data){fclose(f);goto fail;}int ok=fread(data,1,(size_t)len,f)==(size_t)len;fclose(f);ok=ok&&s_load(d,41+i,data,(uint64_t)len);free(data);if(!ok)goto fail;}
+ if(cfg->fixture>=12){void *zero=s_map(d,base[8],0);if(!zero)goto fail;memset(zero,0,32);if(!s_unmap(d,base[8],32))goto fail;}
+ last_error=4;for(int i=0;i<32;i++){char name[128];snprintf(name,sizeof(name),"%s.dxil",names[i]);FILE *f=bench_asset_open(name);if(!f)goto fail;fseek(f,0,SEEK_END);long len=ftell(f);if(len<=0||len>16*1024*1024){fclose(f);goto fail;}rewind(f);void *data=malloc((size_t)len);if(!data){fclose(f);goto fail;}int ok=fread(data,1,(size_t)len,f)==(size_t)len;fclose(f);ok=ok&&s_load(d,41+i,data,(uint64_t)len);free(data);if(!ok)goto fail;}
  if(!s_indirect_open(d)||!s_begin(d)||!dispatch(p,GUARDS,64)||!s_submit(d,0)||!s_wait(d))goto fail;p->allocation_us=s_clock()-start;return p;
 fail:ph_close(p);return NULL;
 }
@@ -47,7 +48,7 @@ int ph_record_frame(Physics *p,uint32_t tick,PhysicsResult *r,uint64_t header_ta
  for(uint32_t round=0;round<=8;round++){p->k[6]=round;if(!dispatch(p,ROUND,p->cfg.capacity)||!sp_record_physics(p->sp)||(round==0&&p->cfg.fixture>=9&&!sp_g4_occupancy(p->sp))||!capture_round(p,round,readback)||!s_stamp(p->d,2+3*round)||!dispatch(p,APPEND,p->cfg.pairs)||!dispatch(p,WALLS,p->cfg.n)||!dispatch(p,ADMIT,1)||!s_stamp(p->d,30+round))return 0;if(round==8){if(!s_stamp(p->d,27))return 0;break;}
   if(!dispatch(p,GRAPH_CLEAR,p->cfg.capacity)||!dispatch(p,UNION,p->cfg.contacts)||!dispatch(p,COMPRESS,p->cfg.n)||!dispatch(p,COUNTS,p->cfg.contacts)||!scan(p,p->cfg.n,G3_SIZE(p->cfg.capacity,0),G3_MEMBER_START(p->cfg.capacity,0),1)||!scan(p,p->cfg.n,G3_CONTACT_COUNT(p->cfg.capacity,0),G3_CONTACT_START(p->cfg.capacity,0),1)||!dispatch(p,MEMBERS,p->cfg.n)||!dispatch(p,SCATTER,p->cfg.contacts)||!dispatch(p,ARGS,G3_ARGS_CHUNKS(p->cfg.n,p->cfg.flags))||!s_transition(p->d,p->owned[3],4)||!indirect(p,COLOR,0)||!dispatch(p,COLOR_COUNTS,p->cfg.n)||!scan(p,p->cfg.n,G3_COLOR_ELEMENTS(p->cfg.capacity,0),G3_COLOR_BASE(p->cfg.capacity,0),0)||!indirect(p,COLOR_RANGES,0)||!indirect(p,READY,0)||!s_transition(p->d,p->owned[3],0)||!dispatch(p,ARGS,G3_ARGS_CHUNKS(p->cfg.n,p->cfg.flags))||!s_transition(p->d,p->owned[3],4)||!s_stamp(p->d,3+3*round)||!indirect(p,SOLVE,16)||!s_transition(p->d,p->owned[3],0)||!s_stamp(p->d,4+3*round))return 0;
  }
- if(!dispatch(p,CHECK_CONTACTS,p->cfg.contacts)||!dispatch(p,CHECK_BODIES,p->cfg.n)||!dispatch(p,CHECK_PAIRS,p->cfg.pairs)||!dispatch(p,CHECK_GUARDS,64)||!s_stamp(p->d,28)||!dispatch(p,PUBLISH,p->cfg.n)||!s_stamp(p->d,29)||!s_transition(p->d,p->owned[1],1)||!s_copy(p->d,readback,p->owned[1],256)||!s_transition(p->d,p->owned[1],0)||!s_transition(p->d,p->output.buffer,1)||!s_copy_offset(p->d,readback,256,p->output.buffer,0,256)||!s_transition(p->d,p->output.buffer,0) )return 0;
+ if(!dispatch(p,CHECK_CONTACTS,p->cfg.contacts)||!dispatch(p,CHECK_BODIES,p->cfg.n)||(p->cfg.fixture==13&&!dispatch(p,POOL_POSITIONS,1))||!dispatch(p,CHECK_PAIRS,p->cfg.pairs)||!dispatch(p,CHECK_GUARDS,64)||!s_stamp(p->d,28)||!dispatch(p,PUBLISH,p->cfg.n)||!s_stamp(p->d,29)||!s_transition(p->d,p->owned[1],1)||!s_copy(p->d,readback,p->owned[1],256)||!s_transition(p->d,p->owned[1],0)||!s_transition(p->d,p->output.buffer,1)||!s_copy_offset(p->d,readback,256,p->output.buffer,0,256)||!s_transition(p->d,p->output.buffer,0) )return 0;
  if(snapshot&&(!s_transition(p->d,p->h[0],1)||!s_transition(p->d,p->owned[1],1)||!s_transition(p->d,snapshot,2)||!s_copy_offset(p->d,snapshot,0,p->h[0],0,64ull*p->cfg.capacity)||!s_copy_offset(p->d,snapshot,64ull*p->cfg.capacity,p->owned[1],0,256)||!s_transition(p->d,p->h[0],0)||!s_transition(p->d,p->owned[1],0)||!s_transition(p->d,snapshot,5)))return 0;
  if(!s_stamp(p->d,39)||!s_submit(p->d,40))return 0;r->cpu_us=s_clock()-start;r->command_packets=s_packet_count(p->d);s_submission_metrics(p->d,&r->queue_submit_us,&r->queue_submit_calls);r->cpu_record_us=r->cpu_us-r->queue_submit_us;r->execution_mode=p->execution_mode;p->poisoned=0;return 1;
 }
@@ -79,7 +80,7 @@ int ph_tick_auto(Physics *p,uint32_t tick,PhysicsResult *r){double start=s_clock
 
 int ph_descriptor(Physics *p,uint32_t *out){if(!p->header_valid||p->cached_tick!=p->last_tick||s_completed(p->d)==UINT64_MAX||s_completed(p->d)<s_fence(p->d))return 0;memcpy(out,p->header,sizeof(p->header));return 1;}
 
-int ph_view_compatible(Physics *p,const uint64_t *base,uint32_t n,uint32_t cap,uint32_t fixture){return p&&base&&p->cfg.n==n&&p->cfg.capacity==cap&&p->cfg.fixture==fixture&&fixture>=9&&fixture<=12&&p->h[0]==base[0]&&p->h[2]==base[1];}
+int ph_view_compatible(Physics *p,const uint64_t *base,uint32_t n,uint32_t cap,uint32_t fixture){return p&&base&&p->cfg.n==n&&p->cfg.capacity==cap&&p->cfg.fixture==fixture&&fixture>=9&&fixture<=13&&p->h[0]==base[0]&&p->h[2]==base[1];}
 
 int ph_cell_mode(Physics *p,uint32_t mode){if(!p||mode>1||p->has_tick||(mode&&p->cfg.fixture<9)||!sp_g4_cell_mode(p->sp,mode))return 0;p->cell_mode=mode;return 1;}
 uint32_t ph_cell_mode_value(Physics *p){return p->cell_mode;}
@@ -95,9 +96,20 @@ int ph_source_epoch_set(Physics *p,uint32_t epoch){
  if(ok){p->source_epoch=epoch;p->header_valid=0;}return ok;
 }
 int ph_scene_one(Physics *p,uint32_t dense){
- if(!p||p->poisoned||p->cfg.fixture<9||dense>=p->cfg.n||s_completed(p->d)<s_fence(p->d))return 0;
+ if(!p||p->poisoned||p->cfg.fixture<9||p->cfg.fixture>11||dense>=p->cfg.n||s_completed(p->d)<s_fence(p->d))return 0;
  uint32_t h[64];if(!ph_header(p,h)||h[0])return 0;uint32_t old=p->k[15];p->k[15]=dense;
  int ok=s_begin(p->d)&&dispatch(p,SCENE_ONE,1)&&s_submit(p->d,0)&&s_wait(p->d);p->k[15]=old;return ok;
 }
 
-int ph_user_command(Physics *p,uint64_t handle){if(p->cfg.fixture!=12)return handle==0;if(!handle)return 0;p->h[7]=handle;return 1;}
+int ph_user_command(Physics *p,uint64_t handle){if(p->cfg.fixture<12)return handle==0;if(!handle)return 0;p->h[7]=handle;return 1;}
+
+int ph_pool_material(Physics *p,const float *values){
+ if(!p||p->cfg.fixture!=13||p->has_tick||!values)return 0;for(int i=0;i<8;i++)if(!isfinite(values[i])||values[i]<0||values[i]>(i<2?1:20))return 0;
+ uint64_t upload=s_new(p->d,32,1,"Pool material initialization");if(!upload)return 0;void *dst=s_map(p->d,upload,0);if(!dst){s_retire(p->d,upload);s_collect(p->d);return 0;}memcpy(dst,values,32);
+ int ok=s_unmap(p->d,upload,32)&&s_begin(p->d)&&s_transition(p->d,p->owned[1],2)&&s_copy_offset(p->d,p->owned[1],POOL_DATA(p->end),upload,0,32)&&s_transition(p->d,p->owned[1],0)&&s_submit(p->d,0)&&s_wait(p->d);if(!s_retire(p->d,upload))ok=0;s_collect(p->d);return ok;
+}
+int ph_pool_rolling(Physics *p,const float *values){
+ if(!p||p->cfg.fixture!=13||p->has_tick||!values)return 0;for(int i=0;i<32;i++)if(!isfinite(values[i])||fabsf(values[i])>20)return 0;
+ uint64_t upload=s_new(p->d,128,1,"Pool rolling oracle initialization");if(!upload)return 0;void *dst=s_map(p->d,upload,0);if(!dst){s_retire(p->d,upload);s_collect(p->d);return 0;}memcpy(dst,values,128);
+ int ok=s_unmap(p->d,upload,128)&&s_begin(p->d)&&s_transition(p->d,p->owned[1],2)&&s_copy_offset(p->d,p->owned[1],POOL_ROLL(POOL_DATA(p->end),0,0),upload,0,128)&&s_transition(p->d,p->owned[1],0)&&s_submit(p->d,0)&&s_wait(p->d);if(!s_retire(p->d,upload))ok=0;s_collect(p->d);return ok;
+}
