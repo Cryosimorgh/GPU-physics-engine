@@ -24,3 +24,13 @@ Use incremental builds and reuse existing binaries and shader outputs when input
 Full qualification, packaging, screenshots, and infographics are reserved for gate completion or explicit requests.
 
 The single task-master handoff ZIP is always requested and is an exception to the packaging restriction. Creating it does not authorize release builds, screenshots, full qualification or additional benchmark campaigns.
+
+## Living architecture / gate records
+
+Keep [docs/ENGINE_ARCHITECTURE.md](docs/ENGINE_ARCHITECTURE.md) current at **every development breakpoint**: gate close, gate reopen, release candidate, architecture-contract change, or validated performance-policy decision.
+
+Update the relevant technical section, evidence boundary, G0–G6 status, open risks, and dated change log **in the same breakpoint commit**. Do not mark a breakpoint complete until the document is committed. Preserve rejected experiments and unverified claims. Identify local-only measurements as local evidence.
+
+Keep the record on the working branch and carry its changes back into `main` on integration. Do not create a separate one-off report as a substitute. Ordinary small fixes do not require a full rewrite or full benchmark campaign.
+
+Write short, precise technical English inspired by ASD-STE100, without rigid controlled-language wording.
