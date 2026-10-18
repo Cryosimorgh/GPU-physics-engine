@@ -1,5 +1,38 @@
 # GPU Physics Billiards
 
+## Fast headless development
+
+```powershell
+python dev_test.py                              # quick (default), usually seconds after first build
+python dev_test.py affected                     # choose tests from current Git changes, including untracked code
+python dev_test.py affected --files projected_solver.hlsl
+python dev_test.py full                         # explicit full headless developer suite
+```
+
+Quick reuses the existing analytical GPU tests: 32 idle ticks, elastic/inelastic
+and oblique collisions/rails, 200 rolling-energy ticks plus a sliding check, and
+32 measured idle ticks after 8 warmup ticks. Numerical acceptance is unchanged.
+Quick omits GBV; full retains the original 10,000-tick rack, break, rollback and
+GBV cases, CPU contracts, command safety, 32-object storage/spatial/physics CLIs
+and device-lifetime checks. Full can take minutes; it is a developer suite, not
+gate qualification or a million-body campaign.
+
+Affected maps shared runtime/storage/physics inputs to their headless checks;
+solver changes omit idle; CPU test and CLI entry-point changes select those tests.
+Rendering-only or documentation changes print SKIP rather than launching a viewer.
+Explicit `--files` also restricts quick. Do not infer rendering correctness from SKIP.
+
+Local include/import content hashes and tool/build options control incremental
+builds; unchanged DXIL and executables are reused. The first run may build missing
+CLIs and initialize `.dev-test-cache/`. Complete commands/logs and JSON results
+are saved in `dev-test-results/<UTC>/`; failures return a nonzero exit code.
+The overhead sample measures the **complete existing 16-object idle tick**, GPU
+timestamps plus CPU recording/submission/blocking; it is informational on a shared
+adapter, not a calibrated regression threshold or displayed FPS. Runs are serialized.
+No screenshots, windows, packaging, or benchmark campaigns are part of these levels.
+
+Workflow-only checks: `python -m unittest test_dev_workflow -v`.
+
 A standalone Windows D3D12 billiards demo built with Zig, C and HLSL. The default
 is one table with exactly 16 stationary balls: one white cue ball and 15 numbered
 object balls. GPU SoA storage, spatial indexing and the existing projected contact

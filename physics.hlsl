@@ -130,7 +130,11 @@ groupshared uint3 g4ContactStats[256];
  if(fixture!=13u||m.Load(0))return;double2 p[16],original[16];
  for(uint i=0;i<16;i++){float2 next=float2(val(i,0),val(i,1))+float2(val(i,2),val(i,3))*dt();p[i]=double2(next);original[i]=p[i];}
  bool converged=false;for(uint iteration=0;iteration<64;iteration++){double maximum=0;
-  for(uint i=0;i<16;i++)for(uint j=0;j<i;j++){double2 delta=p[i]-p[j];double distance=dsqrt(delta.x*delta.x+delta.y*delta.y),radius=double(val(i,8))+double(val(j,8)),penetration=radius-distance;maximum=max(maximum,penetration);if(penetration>0){if(distance==0){fail(32);return;}double2 normal=delta/distance;double move=(penetration+4.0*double(U)*radius)*.5;p[i]+=normal*move;p[j]-=normal*move;}}
+  for(uint i=0;i<16;i++)for(uint j=0;j<i;j++){double2 delta=p[i]-p[j];double squared=delta.x*delta.x+delta.y*delta.y,radius=double(val(i,8))+double(val(j,8));
+   // Strict separation only: 16 binary64 epsilons cover rounded products/sum.
+   // Near-boundary and overlapping pairs retain the original sqrt/correction.
+   if(squared>radius*radius*1.0000000000000035527136788005009)continue;
+   double distance=dsqrt(squared),penetration=radius-distance;maximum=max(maximum,penetration);if(penetration>0){if(distance==0){fail(32);return;}double2 normal=delta/distance;double move=(penetration+4.0*double(U)*radius)*.5;p[i]+=normal*move;p[j]-=normal*move;}}
   if((flags&4u)!=0)for(uint i=0;i<16;i++)p[i]=clamp(p[i],double2(val(i,8),val(i,8)),double2(double(POOL_TABLE_WIDTH)-val(i,8),double(POOL_TABLE_HEIGHT)-val(i,8)));
   if(maximum<=1e-10){converged=true;break;}
  }

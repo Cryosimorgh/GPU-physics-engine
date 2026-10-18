@@ -50,3 +50,6 @@ void s_submission_metrics(StorageDevice*,double*,uint32_t*);
 int s_copy_offset(StorageDevice*,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t);
 
 int s_recording(StorageDevice*);
+
+// Execute only while the GPU 64-bit predicate is zero; handle 0 disables.
+int s_predicate_zero(StorageDevice*,uint64_t,uint64_t);

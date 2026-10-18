@@ -33,3 +33,7 @@ BILLIARDS_PHYSICS_CORRECTION.md
 BILLIARDS_VERIFICATION.json
 examples/billiards/
 dist/GPUPhysicsBilliards-Windows-x64.zip*
+
+.dev-test-cache/
+dev-test-results/
+zig-out/bin/dev_cpu_tests.exe

@@ -121,8 +121,9 @@ pub fn main() !void {
  const warmup:u32=if(bench)20 else 0;
  var rows=try a.alloc([9]f64,steps);defer a.free(rows);var cpu=try a.alloc(f64,steps);defer a.free(cpu);
  var totalsteps:u32=0;
+ // Coverage is per tick. Match the existing lifecycle path's explicit reset.
  for(0..warmup+steps) |tick| {
-  try s.ck(c.s_begin(d));const start=c.s_clock();try b.pipeline(!bench,!cached or tick==0,true);try s.ck(c.s_submit(d,9));const overhead=c.s_clock()-start;try s.ck(c.s_wait(d));var times:[32]f64=undefined;try s.ck(c.s_times(d,&times));totalsteps+=1;
+  try s.ck(c.s_begin(d));const start=c.s_clock();if(!bench){const k=b.constants(true);try b.dispatch(17,b.cap,&k,b.handles[8]);}try b.pipeline(!bench,!cached or tick==0,true);try s.ck(c.s_submit(d,9));const overhead=c.s_clock()-start;try s.ck(c.s_wait(d));var times:[32]f64=undefined;try s.ck(c.s_times(d,&times));totalsteps+=1;
   if(tick>=warmup){const row=tick-warmup;rows[row][0]=times[8]-times[0];for(1..9) |j|rows[row][j]=times[j]-times[j-1];cpu[row]=overhead;}
  }
  const verified=try verify(&b,totalsteps,!bench,null);try ensure(c.s_errors(d)==0);var memory:c.Memory=undefined;try s.ck(c.s_memory(d,&memory));
