@@ -257,6 +257,47 @@ branching costs 34.39 ms versus PGS 15.86 ms, and oblique/frictional costs
 a residual-informed restart trigger that avoids these unnecessary restarts;
 the 1024-body global-memory island solve remains the dominant cost.
 
+### Decision breakpoint: remove unnecessary restarts (policy 4)
+
+Retain policy 4 as an opt-in successor to policy 3. At the same one-eighth-budget
+checkpoint (iteration 512 with the unchanged 4096 limit), restart only when
+the minimum absolute projected residual in the last complete 64-iteration
+window is at least 0.8 times the preceding window minimum. This reuses the
+controller's existing poor-contraction threshold. Improving windows preserve
+their impulses and velocities; there is no later forced restart or increased
+budget. Restarted islands use the same single clean fixed-SOR fallback.
+The rule has no topology, size or fixture lookup. All KKT, projection, friction,
+energy/momentum and rollback checks remain unchanged.
+
+Saved policy-2 traces showed checkpoint ratios 1.3123 and 0.9731 for the failing
+256/1024 chains. In the new batch, candidate ratios were 0.9956/0.9639 for those
+chains (restart), 0.5391 for branching-256 and 0.3903 for oblique-256 (preserve).
+All ten instrumented candidate histories satisfy the restart decision audit.
+
+One automated `python sweep_g5.py quick --trace-restarts` invocation ran 17
+unit tests, built once using verified dependency caches, then serialized 80
+uninstrumented timing trials and ten candidate trace checks. Every candidate,
+policy-3 and fixed-SOR timing trial converged (20 each); PGS converged in 14
+and rejected six. All ten candidate trace cases converged. Full contact/island
+coverage, unchanged invariants and rejection rollback passed; no timeouts or
+audit errors occurred. No passing case was rerun manually.
+
+The predeclared retention rule requires both equal-fixture geometric mean
+and sum of GPU p50 times to be no worse than policy 3, with no lost convergence.
+The measured ratios were 0.8690 and 0.8650; summed CPU submission medians were
+0.9876 of policy 3. Branching-256 improves from 33.63 to 15.57 ms and
+oblique-256 from 56.85 to 30.66 ms. Candidate chain-256/1024 still require
+4036/4027 iterations, with GPU p50/p95 39.78/39.92 and 171.52/171.97 ms.
+Small individual timing increases remain visible in the raw comparison; two
+samples are exploratory, not a tail-latency or significance claim.
+
+The remaining dominant cost is the 1024-body one-workgroup/global-memory solve:
+170.30 ms of its 171.52 ms complete tick. The restart still discards 512
+iterations on hard chains. Production stays policy 1; no broader G5 approval
+is implied. **Evidence:** User-uploaded `results(4).json` and `ENGINE_ARCHITECTURE(2).md` (2026-10-18), saved locally in the Codex workspace under `dev-test-results/g5-sweep-20261018T080015570617Z/`. The companion CSV and residual-traces CSV are referenced in the handoff but **not available on GitHub** or independently inspected here. The raw JSON contains full trace events, test statuses, CPU/GPU timings, source/build hashes, and measured candidate results. No GPU runs were executed during this document update.
+
+**Gate and provenance note:** These results represent a local opt-in solver experiment. They do not establish that the policy-4 HLSL implementation has been committed to the linked GitHub branch. They are not a sustained-simulation qualification, and the 80 two-sample timing runs cannot establish stable p95 latency. G5 remains **NOT QUALIFIED**.
+
 ### Reproduction and evidence
 
 Run `python sweep_g5.py quick --diagnose-adaptive`. All builds finish before
@@ -405,24 +446,26 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G2** | Spatial search and contacts | **Passed in historical scoped tests** | Hash selected; contact construction verified. |
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
-| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Opt-in bounded restart converges in 20/20 local short-run cases but remains slower on most large graphs; production policy unchanged. |
+| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Residual-gated policy 4 retained as opt-in; 20/20 local runs converge and aggregate GPU p50 improves 13.5% vs policy 3. Production remains policy 1; 1,024-body chain ~171.5 ms/tick. |
 | **G6** | Reproduce all gates, approve an engine foundation | **Not started / not authorized** | Requires G4/G5 closure and architecture proof. |
 
 ### Current G5 decision (2026-10-18)
 
-**Finding:** The first adaptive solver policy failed the 256- and 1,024-body chain tests. Residual traces now show that short-term SOR oscillations caused excessive relaxation reductions. One bounded restart (policy 3) recovered convergence within the existing 4,096-iteration limit on all 20 candidate attempts in the ten-fixture quick sweep. It solved the 64-body chain in 2.52 ms versus 15.69 ms with fixed SOR, but took 39.78 ms versus 33.76 ms at 256 bodies and 173.56 ms versus 148.51 ms at 1,024 bodies.
+**Finding:** A fixed SOR factor of 1.995 converges on compressive chains but wastes iterations on other graphs. The first adaptive policy failed 256/1,024-body chains. Policy 3 restored convergence through a fixed one-time restart, but sometimes threw away useful progress. Policy 4 adds a residual-contraction gate at the same 512-iteration checkpoint (ratio threshold 0.8). This retains progress on improving networks and restarts only when the measured residual is not contracting fast enough.
 
-**Decision: CONDITIONAL correctness PASS, performance NO-GO.** Retain policy 3 as an opt-in local experiment. Leave the production PGS/fixed-SOR policy unchanged; do not approve G5. The unconditional bounded restart wastes work on other connected-island topologies.
+**Decision: RETAIN POLICY 4 AS OPT-IN / G5 STILL OPEN.** In the local 80-run quick sweep, all 20 policy-4, 20 policy-3, and 20 fixed-SOR trials converged; PGS converged in 14/20. The candidate passed its predefined aggregate balance requirement, with a geometric-mean GPU p50 ratio of 0.8690 and a summed p50 ratio of 0.8650 against policy 3. It improved branching-256 from 33.63 to 15.57 ms and oblique-256 from 56.85 to 30.66 ms. Production policy 1 remains unchanged.
 
-**Next action:** Use recorded residual contraction to trigger or avoid restart within the existing work limit. Run the same single headless sweep; retain the candidate only if it preserves chain convergence and reduces unnecessary fallback cost. Long connected-island global-memory execution is still expensive.
+**Remaining risk:** Chain-256 still takes 39.78 ms (4,036 iterations), and chain-1,024 takes 171.52 ms (4,026–4,027 iterations), versus 33.52 ms and 149.12 ms using fixed SOR in this sweep. The 1,024-body case spends approximately 170.30 ms in the one-workgroup/global-memory solver, which now dominates this specific workload. Two cold samples per configuration do not qualify sustained or tail performance.
 
-**Evidence reference:** User-uploaded `results(3).json` and `ENGINE_ARCHITECTURE(1).md`, 2026-10-18. JSON includes 60 short timing runs, six traces, hashes, and local build provenance. Associated CSV and raw traces remain local and are not claimed as committed CI evidence.
+**Next action:** Profile and correct the global-memory solver's 1,024-body bottleneck with one bounded change and an independent correctness check. Preserve the existing four policies and their fixture baseline; do not start unbounded optimization, a UI test, or a full campaign.
+
+**Evidence:** User uploads `results(4).json` and `ENGINE_ARCHITECTURE(2).md` (2026-10-18). The machine-readable sweep reports 17 passing unit tests, 80 timed runs, 10 trace checks, and local source/shader hashes. The evidence was not committed to GitHub CI. The documentation commit does not change solver code or mark policy 4 production-ready.
 
 ## 16. Risks and work still required
 
 1. **Strict state isolation:** Replace per-body in-place publication with a proven completed-generation handoff. Measure any copy or memory cost.
-2. **General island convergence:** The bounded-restart candidate restored convergence in the quick sweep, but restarts increase GPU work on several ordinary networks. Use residual-informed restart criteria; preserve KKT limits and rollback.
-3. **Large-island parallelism:** Study multi-workgroup solve after the numerical policy is stable. Compare local-memory and global-memory paths.
+2. **General island convergence:** Residual-gated policy 4 passes the limited quick sweep and avoids unnecessary restarts in branching/oblique cases. It remains opt-in and unqualified for sustained/general workloads; preserve KKT limits and rollback.
+3. **Large-island parallelism:** First profile the 1,024-body global-memory solver (about 170.30 ms of a 171.52 ms tick). Study memory traffic and synchronization before evaluating multi-workgroup approaches.
 4. **Scheduler scope:** A reusable resource monitor and dependency scheduler are design goals, not completed general-purpose services.
 5. **Display verification:** Collect real local display evidence for GPU-02 when required. Do not confuse Present calls with scanout.
 6. **Evidence discipline:** Keep the exact source revision, shader hashes, fixtures, and GPU/driver context with measurements. Do not combine numbers from different scenarios into one speed claim.
@@ -464,6 +507,7 @@ Next action:
 | 2026-10-18 | Baseline document | Established the technical inventory, G0–G5 history, evidence labels, known risks, and mandatory breakpoint update process. No new gate was approved by this documentation commit. |
 | 2026-10-18 | G5 adaptive-solver decision — FAIL | Reviewed 60 CLI runs and matching JSON/CSV summary. The adaptive policy converged in 16/20 runs but failed the 256- and 1,024-body chains. It was rejected; the previous policy remains the local baseline, and G5 stays open. |
 | 2026-10-18 | G5 bounded-restart candidate — CONDITIONAL | Reviewed 60 headless GPU runs and six diagnostics. Policy 3 converged in 20/20 local attempts, but 256/1,024-body chains and several branching/oblique networks suffered performance penalties. Production remains unchanged; G5 remains unqualified. |
+| 2026-10-18 | G5 residual-gated restart — OPT-IN RETAIN | Audited 80 short GPU timing runs, 10 trace checks and 17 reported sweep unit tests. Policy 4 converged in 20/20 and lowered aggregate GPU p50 sum by 13.5% relative to policy 3, but remained slow on large chains. Production policy 1 unchanged; G5 unqualified. |
 
 ---
 
