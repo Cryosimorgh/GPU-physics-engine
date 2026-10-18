@@ -1,5 +1,8 @@
 # Standalone GPU physics engine
 
+**Technical architecture and living gate record:** [docs/ENGINE_ARCHITECTURE.md](docs/ENGINE_ARCHITECTURE.md). Update it at each G0–G6 breakpoint or material architecture decision. Historical and local experimental results are labeled separately from released code.
+
+
 Zig / C / HLSL / Direct3D 12 standalone experiment. Engine snapshot from local G4 commit `ce81b2c`; compiled engine bytes match the measured implementation at `e324fd3`. Reports, benchmark results, raw traces, and historical reference repositories are intentionally excluded from this repository.
 
 ## Run
