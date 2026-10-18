@@ -197,6 +197,93 @@ The adaptive policy converged in **16 of 20** attempts; fixed SOR converged in *
 
 **Next action:** Use a **headless residual-trajectory diagnostic** on chain sizes 64, 256, and 1,024 to find why adaptive relaxation stalls. Evaluate one safeguarded fallback or restart rule, with a strict work budget and both fixed baselines unchanged. Run a single consolidated sweep. Do not launch the viewer, capture screenshots, or start multi-workgroup solver development yet.
 
+### G5 bounded-restart candidate — conditional correctness pass (2026-10-18)
+
+Production remains policy 1: the existing PGS/fixed-SOR behavior (not a qualified G5 result). Policy 2 is
+the rejected residual-adaptive experiment. Policy 3 adds one bounded restart
+and is retained as an **opt-in correctness candidate**, not a G5 qualification
+or a production performance improvement.
+
+The experiment reports retaining the SoA storage, spatial/contact pipeline,
+contact graph, global tick, immutable free-state inputs (not strict immutable
+source-buffer publication), projected normal/tangent constraints, rounded-state KKT
+tolerances, validation, work limits, and rollback are preserved. The change is
+local to the existing GPU island solver; it creates no scheduler or CPU solve.
+
+### Diagnosis
+
+GPU traces record every 64-iteration residual window and relaxation change.
+The 64-body chain settles near omega 1.929 and converges without a reduction.
+For 256 bodies, a window contraction ratio of 2.633 at iteration 384 halves
+the excess relaxation from approximately 1.995 to 1.4975. For 1024 bodies,
+reductions occur at iterations 320 and 3200 (ratios 1.486 and 13.967).
+The controller mistakes nonmonotonic SOR residual transients for sustained
+instability. It then restores relaxation too slowly: the final factors are
+1.9328125 and 1.9638911, respectively. Both exhaust 4096 iterations.
+Independent contact/impulse/oracle checks and exact rollback pass; this is a
+relaxation-control failure, not evidence of incorrect contact equations.
+
+### Bounded fallback and measured decision
+
+Policy 3 spends at most one eighth of the island's existing iteration/work
+budget on adaptation. If it has not converged, it clears only that island's
+impulses, restores its immutable free velocities, and runs fixed SOR 1.995 for
+the remaining budget. There is at most one restart, no new allocation or
+mid-solve readback, no size/topology/fixture rule, and no tolerance or limit
+increase. A remaining-budget failure still rejects and rolls back normally;
+this is not a universal convergence guarantee.
+
+One serialized quick batch: two cold one-tick trials per configuration, plus
+six instrumented chain trials. The diagnostic automatically reproduced the
+old-policy failures before allowing candidate execution. All 20 candidate
+and 20 fixed-SOR benchmark trials converged; PGS converged in 14 and rejected
+six at 64/256/1024 bodies. The reviewed JSON contains 60 timing runs and 6
+additional diagnostic runs; all 30 summary medians agree with their raw samples.
+All 54 accepted benchmark runs report accepted-state invariant checks, and all
+6 rejected runs report verified rollback. Actual island/contact coverage, KKT, impulse
+reconstruction, accepted-state invariants and rejected-state rollback passed.
+There were no timeouts or final audit errors. Thirteen sweep unit tests pass.
+
+| Chain bodies | Fixed SOR GPU p50/p95, ms | Candidate GPU p50/p95, ms | Candidate iterations |
+|---:|---:|---:|---:|
+| 64 | 15.69 / 15.72 | 2.52 / 2.57 | 367 |
+| 256 | 33.76 / 33.89 | 39.78 / 39.85 | 4036 |
+| 1024 | 148.51 / 149.50 | 173.56 / 177.48 | 4026 |
+
+The fallback recovers every previously converging configuration, but discards
+useful adaptive/PGS progress on slower successful networks. At 256 bodies,
+branching costs 34.39 ms versus PGS 15.86 ms, and oblique/frictional costs
+52.64 ms versus PGS 31.14 ms. Keep production unchanged. The next target is
+a residual-informed restart trigger that avoids these unnecessary restarts;
+the 1024-body global-memory island solve remains the dominant cost.
+
+### Reproduction and evidence
+
+Run `python sweep_g5.py quick --diagnose-adaptive`. All builds finish before
+GPU cases execute sequentially under the existing workflow lock. Traced
+diagnostic runs are separate from uninstrumented timing trials. The test-only
+trace uses checked, bounded unused contact-record space; missing windows or
+insufficient room fail the diagnostic without truncating simulation work.
+
+Full results, CPU submission times, source/binary hashes and raw exports
+were saved **locally** under `dev-test-results/g5-sweep-20261018T074517651930Z/`.
+The user supplied `results(3).json` and `ENGINE_ARCHITECTURE(1).md` for this
+review. The separate CSV and residual trace exports were referenced by the
+handoff but were **not uploaded or committed to GitHub**. Therefore those
+exports have not been independently inspected in this documentation update.
+
+The batch required a trace-decoder repair for the GPU's distinct float32 and
+float64 encodings of the 1.995 literal. `--resume` verified compiled artifacts,
+reused 42 completed GPU cases, and ran only the 24 unexecuted cases, without
+rebuilding. Original summaries retain those decoder failures; final trace
+repairs used saved exports only. Timing controls therefore precede the resumed
+candidate trials. Two samples make p95 merely the maximum, not a tail-latency
+claim. No GUI, packaging, sustained campaign or broader gate approval occurred.
+**Scope:** This evidence concerns local uncommitted solver experiments, not
+code shipped on `main` or the playable GitHub branch. The source and compiled
+binary hashes are reported in local JSON but binaries are not available here
+for independent execution. Neither G5 nor the candidate is production-qualified.
+
 ## 9. Global time, sleeping, and simulation state
 
 **Code:** `physics.c`, `physics.hlsl`, `viewer.c`.
@@ -318,21 +405,23 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G2** | Spatial search and contacts | **Passed in historical scoped tests** | Hash selected; contact construction verified. |
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
-| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Fixed SOR rescues chains but is slow on other graphs; adaptive trial rejected on 256/1,024-body chains. |
+| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Opt-in bounded restart converges in 20/20 local short-run cases but remains slower on most large graphs; production policy unchanged. |
 | **G6** | Reproduce all gates, approve an engine foundation | **Not started / not authorized** | Requires G4/G5 closure and architecture proof. |
 
 ### Current G5 decision (2026-10-18)
 
-**Finding:** A fixed SOR factor of 1.995 converged in all submitted short-run cases but was much slower than PGS on several ordinary graphs. The new residual-based adaptive trial improved the 64-body chain from 15.55 ms to 2.39 ms; however, it **failed convergence** at 256 and 1,024 bodies, where fixed SOR passed.
+**Finding:** The first adaptive solver policy failed the 256- and 1,024-body chain tests. Residual traces now show that short-term SOR oscillations caused excessive relaxation reductions. One bounded restart (policy 3) recovered convergence within the existing 4,096-iteration limit on all 20 candidate attempts in the ten-fixture quick sweep. It solved the 64-body chain in 2.52 ms versus 15.69 ms with fixed SOR, but took 39.78 ms versus 33.76 ms at 256 bodies and 173.56 ms versus 148.51 ms at 1,024 bodies.
 
-**Decision:** Reject this adaptive implementation. Keep the previously tested solver policy as the baseline. Diagnose the residual trajectory before designing a safeguarded policy. Do not approve G5, infer sustained performance, or claim that the restored shader binaries were retested after restoration.
+**Decision: CONDITIONAL correctness PASS, performance NO-GO.** Retain policy 3 as an opt-in local experiment. Leave the production PGS/fixed-SOR policy unchanged; do not approve G5. The unconditional bounded restart wastes work on other connected-island topologies.
 
-**Evidence reference:** User-uploaded `results(2).json` and `results(2).csv`, 2026-10-18, quick 60-run sweep (10 fixtures × 3 solvers × 2 samples). Both files remain local and are not committed CI artifacts.
+**Next action:** Use recorded residual contraction to trigger or avoid restart within the existing work limit. Run the same single headless sweep; retain the candidate only if it preserves chain convergence and reduces unnecessary fallback cost. Long connected-island global-memory execution is still expensive.
+
+**Evidence reference:** User-uploaded `results(3).json` and `ENGINE_ARCHITECTURE(1).md`, 2026-10-18. JSON includes 60 short timing runs, six traces, hashes, and local build provenance. Associated CSV and raw traces remain local and are not claimed as committed CI evidence.
 
 ## 16. Risks and work still required
 
 1. **Strict state isolation:** Replace per-body in-place publication with a proven completed-generation handoff. Measure any copy or memory cost.
-2. **General island convergence:** The first residual-based adaptive policy was rejected; it failed 256/1,024-body compressive chains. Inspect contraction history and design a bounded fallback that preserves all KKT limits and rollback.
+2. **General island convergence:** The bounded-restart candidate restored convergence in the quick sweep, but restarts increase GPU work on several ordinary networks. Use residual-informed restart criteria; preserve KKT limits and rollback.
 3. **Large-island parallelism:** Study multi-workgroup solve after the numerical policy is stable. Compare local-memory and global-memory paths.
 4. **Scheduler scope:** A reusable resource monitor and dependency scheduler are design goals, not completed general-purpose services.
 5. **Display verification:** Collect real local display evidence for GPU-02 when required. Do not confuse Present calls with scanout.
@@ -374,6 +463,7 @@ Next action:
 |---|---|---|
 | 2026-10-18 | Baseline document | Established the technical inventory, G0–G5 history, evidence labels, known risks, and mandatory breakpoint update process. No new gate was approved by this documentation commit. |
 | 2026-10-18 | G5 adaptive-solver decision — FAIL | Reviewed 60 CLI runs and matching JSON/CSV summary. The adaptive policy converged in 16/20 runs but failed the 256- and 1,024-body chains. It was rejected; the previous policy remains the local baseline, and G5 stays open. |
+| 2026-10-18 | G5 bounded-restart candidate — CONDITIONAL | Reviewed 60 headless GPU runs and six diagnostics. Policy 3 converged in 20/20 local attempts, but 256/1,024-body chains and several branching/oblique networks suffered performance penalties. Production remains unchanged; G5 remains unqualified. |
 
 ---
 
