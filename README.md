@@ -1,5 +1,8 @@
 # GPU Physics Billiards
 
+**Technical architecture and living gate record:** [docs/ENGINE_ARCHITECTURE.md](docs/ENGINE_ARCHITECTURE.md). Update it at each G0–G6 breakpoint or material architecture decision. Historical and local experimental results are labeled separately from released code.
+
+
 ## Fast headless development
 
 ```powershell
