@@ -2,6 +2,9 @@
 // Binary64 transient accumulators fix the independently demonstrated f32
 // residual cancellation. G1 state and the acceptance envelope remain f32.
 struct Body {double vx,vy,omega,im,ii;uint sleep;};
+#ifndef G5_REUSE_MEASURE_BODIES
+#define G5_REUSE_MEASURE_BODIES 1
+#endif
 #ifndef G5_BODY_CACHE
 #define G5_BODY_CACHE 0
 #endif
@@ -85,6 +88,10 @@ void storeBody(uint i,uint local,Body b){
  }else{mdstore(AT(WORK_VX,i),b.vx);mdstore(AT(WORK_VY,i),b.vy);mdstore(AT(WORK_OMEGA,i),b.omega);trial.Store(4*(13*capacity+i),b.sleep);if(b.sleep==0)trial.Store(4*(14*capacity+i),1);}}
 double tolerance(Body a,Body b,double target){return 32.0*double(U)*max(.001,max(abs(target),max(max(abs(a.vx),abs(a.vy)),max(abs(b.vx),abs(b.vy)))));}
 double relative(uint o,bool tangent,bool rounded){uint packed=c.Load(o+60);Body a=bodyAt(c.Load(o),packed&65535),b=bodyAt(c.Load(o+4),packed>>16);if(rounded){a.vx=double(float(a.vx));a.vy=double(float(a.vy));a.omega=double(float(a.omega));b.vx=double(float(b.vx));b.vy=double(float(b.vy));b.omega=double(float(b.omega));}double nx=cf(o,3),ny=cf(o,4);return tangent?(a.vx-b.vx)*(-ny)+(a.vy-b.vy)*nx-a.omega*double(cf(o,6))-b.omega*double(cf(o,7)):(a.vx-b.vx)*nx+(a.vy-b.vy)*ny;}
+// measure() performs no body writes between tolerance and the two residuals.
+// Reuse that snapshot only there. applyColor() must reload after its normal
+// impulse before it computes the tangent impulse, and remains unchanged.
+double measureRelative(uint o,Body a,Body b,bool tangent){a.vx=double(float(a.vx));a.vy=double(float(a.vy));a.omega=double(float(a.omega));b.vx=double(float(b.vx));b.vy=double(float(b.vy));b.omega=double(float(b.omega));double nx=cf(o,3),ny=cf(o,4);return tangent?(a.vx-b.vx)*(-ny)+(a.vy-b.vy)*nx-a.omega*double(cf(o,6))-b.omega*double(cf(o,7)):(a.vx-b.vx)*nx+(a.vy-b.vy)*ny;}
 void delta(uint o,double dl,double ft){uint i=c.Load(o),j=c.Load(o+4),packed=c.Load(o+60);double nx=cf(o,3),ny=cf(o,4),ix=nx*dl-ny*ft,iy=ny*dl+nx*ft;Body a=bodyAt(i,packed&65535);a.vx+=ix*a.im;a.vy+=iy*a.im;a.omega-=ft*double(cf(o,6))*a.ii;if(dl!=0||ft!=0){if(a.sleep>=sleep_frames)markWake(i);a.sleep=0;}storeBody(i,packed&65535,a);if(j<n){Body b=bodyAt(j,packed>>16);b.vx-=ix*b.im;b.vy-=iy*b.im;b.omega-=ft*double(cf(o,7))*b.ii;if(dl!=0||ft!=0){if(b.sleep>=sleep_frames)markWake(j);b.sleep=0;}storeBody(j,packed>>16,b);}}
 // 0: unchanged PGS control; 1: historical >=64-body fixed SOR control;
 // 2: original residual policy; 3: one budgeted restart; 4: residual-gated restart.
@@ -96,10 +103,22 @@ double measure(uint r,uint lane,out double absoluteResidual){
  for(uint ci=begin+lane;ci<end;ci+=128){
   uint o=CT(CONTACT,c.Load(CT(ROOT_CONTACTS,ci))),packed=c.Load(o+60);
   Body a=bodyAt(c.Load(o),packed&65535),b=bodyAt(c.Load(o+4),packed>>16);
-  double tol=tolerance(a,b,double(cf(o,5))),kn=cf(o,8),ln=readLambda(o,false),q=relative(o,false,true)-double(cf(o,5)),res=normalResidual(q,kn,ln);
+  double tol=tolerance(a,b,double(cf(o,5))),kn=cf(o,8),ln=readLambda(o,false);
+#if G5_REUSE_MEASURE_BODIES
+  double q=measureRelative(o,a,b,false)-double(cf(o,5));
+#else
+  double q=relative(o,false,true)-double(cf(o,5));
+#endif
+  double res=normalResidual(q,kn,ln);
   ratio=max(ratio,res/tol);raw=max(raw,res);
   double kt=cf(o,9);
-  if(kt>0){double lt=readLambda(o,true),resT=contactTangentResidual(o,relative(o,true,true),kt,ln,lt);ratio=max(ratio,resT/tol);raw=max(raw,resT);}
+  if(kt>0){double lt=readLambda(o,true);
+#if G5_REUSE_MEASURE_BODIES
+   double vt=measureRelative(o,a,b,true);
+#else
+   double vt=relative(o,true,true);
+#endif
+   double resT=contactTangentResidual(o,vt,kt,ln,lt);ratio=max(ratio,resT/tol);raw=max(raw,resT);}
  }
  residuals[lane]=ratio;
 #if G5_RELAXATION_POLICY >= 2
