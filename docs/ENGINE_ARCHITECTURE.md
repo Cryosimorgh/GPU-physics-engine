@@ -358,6 +358,27 @@ The cleanup removed the local-only G5 shader, sweep, profile scripts, and raw ev
 
 **Required recovery:** Restore `G5-Global-Solver-Cost-Handoff-20261018T090324676154Z.zip` (previous SHA-256 `07dd2be67af66faf089bdc726feb1b0b4d7cdd59a7250a8fcf7d4acb327c0a18`) or an equivalent complete snapshot with the tested policy-4 shader, verified build workflow, sweep, fixtures, and baseline evidence. Then inspect that exact source/DXIL and run one matched serialized quick sweep. Recreating the deleted solver policies or harness is outside this one-correction task.
 
+### G5 tested baseline recovery - source and headless correctness restored (2026-10-18)
+
+The preceding missing-source blocker is resolved in the isolated `g5-baseline-work` checkout. The original `engine-work` checkout and its files were not changed. The recovery kit's read-only verifier passed before restoration and again afterward: **25/25 source hashes** and **6/6 workflow hashes** match, including all four unbundled dependencies. The original evidence ZIP has SHA-256 `07dd2be67af66faf089bdc726feb1b0b4d7cdd59a7250a8fcf7d4acb327c0a18`; the restored solver has SHA-256 `f9b93e98d3fb78944ae6547530d77e94cf29013ca61313af41d3448194bb05f9`. Additional CLI inputs `physics_tests.c`, `spatial.c`, and `spatial-layout.h` match the preserved qualified release manifest. No source dependency mismatch was found.
+
+**Build:** Zig 0.15.2; Windows SDK 10.0.26100.0; DXC 1.8.2502.11. Recovered scripts were used unchanged. All shader hashes in all four rebuilt control configurations match the archived shader hashes. Policy 4 uses `G5_BODY_CACHE=0` through the unchanged compile-time default. The rebuilt CLI hash is `b68e82b173659046a93767444ebaa9a90d6d222d473e34375ecf187a0fa1836e`; the archived fingerprint is `fbc98450e31ffe5eb452a58ab3457aa1f22319d1b1d26d2de65dfcc7a7dd0451`. The kit contains no archived executable bytes. The cause of this executable-byte difference remains **UNVERIFIED**; source/shader recovery and runtime acceptance are separate from binary identity.
+
+**Execution:** 33 workflow/sweep/profile unit tests passed. One serialized `python sweep_g5.py quick` used the existing smallest quick mode, ten deterministic fixtures, four controls, and two cold trials per case. All ten input hashes match the archive. Of 80 trials, **74 converged**, and the same **six PGS chain cases rejected** at the unchanged limit with verified rollback. No timeout, admission rejection, or unexpected error occurred. Policy 4 passed **20/20**, including the 1,024-body chain. All accepted trials passed unchanged independent KKT, momentum, energy, contact/island, impulse, and state checks. The sweep exits 1 because it counts expected PGS rejections; this exit is preserved, not relabeled by changing the harness.
+
+| Policy-4 chain, 1,024 bodies | Archived | Recovered |
+|---|---:|---:|
+| Complete GPU tick p50 | 170.134 ms | 167.940 ms |
+| Complete GPU tick p95 (max of two) | 171.129 ms | 168.213 ms |
+| Solver p50 | 167.466 ms | 165.860 ms |
+| CPU record + submit p50 | 3.697 ms | 3.762 ms |
+| Maximum iterations | 4,026 | 4,026 |
+| Contacts / largest island | 1,023 / 1,024 | 1,023 / 1,024 |
+
+**Decision:** The tested source and headless correctness baseline are restored. This is not a new optimization or a G5 qualification. Exact numerical equality is not claimed: color counts differ in 23/80 cases, and iterations differ by up to 444 across controls (up to 227 for policy 4). The existing invariant tolerances were not changed. Color/order variability and two cold samples limit historical timing comparisons; shader identity does not establish identical graph schedules. No cache, solver-policy, arithmetic, or synchronization optimization was made. Future comparisons must retain matched controls and report this variability. G0-G4 statuses remain unchanged; G5 remains **NOT QUALIFIED**. Executable byte equivalence remains **UNVERIFIED**.
+
+**Local evidence:** `dev-test-results/recovery-preflight/provenance.json`, unit/build logs, and `dev-test-results/g5-sweep-20261018T191026867497Z/{results.json,results.csv,recovery-comparison.json}`. `recovery_preflight.py` and `recovery_compare.py` only check restoration/build provenance and compare already completed outputs; they do not replace the recovered solver or physics tests. No GUI, screenshots, full campaign, hardware-counter request, or release package was used.
+
 ## 9. Global time, sleeping, and simulation state
 
 **Code:** `physics.c`, `physics.hlsl`, `viewer.c`.
