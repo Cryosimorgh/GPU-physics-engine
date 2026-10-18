@@ -388,6 +388,32 @@ These are two cold independent ticks per case. Differences between two samples a
 
 **Evidence:** User-supplied `G5-Baseline-Restored-20261018.zip`, including `recovery-manifest.json`, `evidence/preflight/provenance.json`, `evidence/sweep/results.json`, `results.csv`, `recovery-comparison.json`, Windows logs and exported GPU state. ZIP integrity and recorded summary data were checked off-line; the GPU run was recorded on Windows, not repeated in this review environment. Local handoff evidence is not GitHub CI evidence.
 
+### G5 repeated-body-load removal in solver measurement — RETAIN (2026-10-18)
+
+**What changed:** The original `measure()` fetched the bodies for the contact's tolerance test, then fetched them again through `relative()` for normal and tangential projected residuals. The contact state is not written between those reads. The new `measureRelative()` reuses the already loaded `Body a` and `Body b`, with the same explicit float32 rounding before FP64 relative-speed calculations. The `applyColor()` path is unchanged; it still reloads the bodies after a normal impulse before applying the tangential impulse. The change does not alter the contact graph, constraints, projection, solver iteration/work budget, synchronization barriers, KKT acceptance rules, or rollback.
+
+The new compile-time selector is `G5_REUSE_MEASURE_BODIES` (0 = original, 1 = reuse). The **retained source defaults to 1**. The retained source SHA-256 is `39d7d5e606dfad1cbd71de04e1de68a3d7d008e35f235bfdc01df8814edc233f`; the separately tested candidate snapshot has SHA-256 `f060d6975f6d82bd92145767cfb8a6c518ed14eecc55ec712c56882749f488bb` because the default macro was switched after testing. The recorded final production-policy `ph_ready` and `ph_solve` shaders were rebuilt and their hashes matched the policy-1 candidate shader results exactly. The default relaxation policy remains **1**, and body caching remains **0**. No new GPU correctness tests were run after only changing that compile-time default.
+
+**Static shader evidence:** For policy 4, `ph_solve.dxil` includes **225 → 191** static buffer-load instruction sites, **71 → 55** double-assembly sites and **157 → 153** FP64 arithmetic instruction sites; shader barrier sites remain **20**. These counts describe disassembled instruction sites, not physical memory transactions, cache misses or real stall time. Fresh unchanged controls for policy 0/1/3/4 reproduced historical archived `ph_solve.dxil` hashes, and all five policy configurations used the same fresh linked CLI host executable across the two arms.
+
+**Matched Windows headless test:** One `python sweep_solver_cost.py quick` batch ran 33 existing unit tests, compiled the control and candidate variants, and executed **200 cold single-tick trials** (10 fixtures × 5 policies × 2 variants × 2 attempts). All trials completed without timeout. Independently recomputing all 50 JSON summary medians from the 200 recorded runs found no mismatches. Each arm produced **90 accepted and 10 expected rejected** trials; the rejection breakdown is six PGS and four original-adaptive-policy cases. All accepted trials reported invariant checks passed, and each rejection reported verified rollback. The contact/island counts, acceptance status, KKT bounds and work limits remained valid. This is recorded Windows execution evidence, **not** an independently rerun GPU test.
+
+| Tested policy 4, one connected 1,024-body chain | Unchanged control | Body snapshot reuse |
+|---|---:|---:|
+| Complete GPU tick p50 | 167.33 ms | **162.99 ms** |
+| Solver-stage p50 | 165.35 ms | **161.12 ms** |
+| CPU recording/submission p50 | 2.928 ms | 2.846 ms |
+| Solver iterations, two trials | 4,026 / 4,025 | 4,026 / 4,027 |
+| Actual contacts / largest island | 1,023 / 1,024 | 1,023 / 1,024 |
+
+**Decision rule:** Retain only if all correctness/rollback conditions pass and both the geometric mean and sum of complete-tick GPU p50 improve across (a) the ten policy-4 fixtures and (b) all 45 accepted-policy configurations. The audited policy-4 geometric-mean/sum ratios are **0.962547 / 0.964774**; the all-accepted-policy ratios are **0.983971 / 0.953917**. Both predeclared aggregate performance tests pass. **Decision: RETAIN** the narrow source change.
+
+**Limits and observed regressions:** Some individual workloads regressed: branching-64 policy 4 went from **3.129** to **3.241 ms**, and dense-256 from **11.168** to **11.580 ms**. Solver coloring and iteration counts also vary slightly between runs. Two cold samples do not support a robust p95 or sustained-performance claim. The 1,024-body connected chain still spends roughly **161 ms** in its solver, with about **4,026** iterations. The division between FP64 arithmetic, barriers and actual memory stalls remains **UNVERIFIED**.
+
+**Executable reproducibility:** A newly built unchanged CLI had SHA-256 `237c22371b75c76ffed9cc5c50b4f4fbbe201bd77e7539f49c0466b4d7edddbc`, versus the recovered local executable `b68e82b173659046a93767444ebaa9a90d6d222d473e34375ecf187a0fa1836e`. Local PE section hashes match for every section except `.buildid`, providing a concrete metadata explanation for that local rebuild difference. The much older archived executable fingerprint `fbc984...` cannot be explained without its original bytes, build logs and linker inputs.
+
+**Evidence:** User-supplied `G5-Solver-Snapshot-Reuse-20261018.zip`: source and baseline HLSL, `change.patch`, static DXIL dumps, `evidence/matched-quick/results.json` and `results.csv`, 200 per-run exports, `retained-build.json`, 33-test log, linker/PE provenance and source architecture excerpt. ZIP CRC verification passed; recorded source hashes and summary medians were checked. The archive's source doc is an **experiment copy**; this section is integrated into the full living GitHub record instead. **No experimental solver code has been pushed to GitHub by this review. G5 is not qualified.**
+
 ## 9. Global time, sleeping, and simulation state
 
 **Code:** `physics.c`, `physics.hlsl`, `viewer.c`.
@@ -509,24 +535,24 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G2** | Spatial search and contacts | **Passed in historical scoped tests** | Hash selected; contact construction verified. |
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
-| **G5** | Large islands, convergence, robust solver performance | **Recovered baseline — NOT QUALIFIED** | 25/25 source files, 6/6 workflows, and 80-run Windows quick sweep restored with expected behavior. Executable hash and 156 numeric differences prevent bitwise replay claim; production policy 1 unchanged. |
+| **G5** | Large islands, convergence, robust solver performance | **Optimization retained locally — NOT QUALIFIED** | Residual body-snapshot reuse: 200 headless trials, matched correctness/rollback; 1,024-body GPU p50 167.33→162.99 ms. Policy 1 stays default; G5 gate remains open. |
 | **G6** | Reproduce all gates, approve an engine foundation | **Not started / not authorized** | Requires G4/G5 closure and architecture proof. |
 
 ### Current G5 decision (2026-10-18)
 
-**Finding:** The missing local policy-4 baseline and sweep have been restored to an isolated Windows checkout. All 25 manifest source files and six workflow dependencies now match. The headless quick sweep recorded 80 trials with 74 accepted attempts, six expected PGS rejections and verified rollback. Policy 4 converged in all 20 trials. The archived and rebuilt shader hashes match, but the executable SHA-256 differs, as do some per-trial numerical values and contact-color counts. Physical acceptance and island structure remained consistent.
+**Finding:** G5's isolated Windows baseline has been restored with complete source hashes and valid headless correctness evidence. The next targeted experiment removed repeated body loads during residual measurement without altering the contact equations or solver stages. The matched 200-trial sweep passed the independent acceptance/rollback criteria, and both predeclared aggregate GPU-p50 performance criteria improved. The 1,024-body connected chain fell from 167.33 to 162.99 ms per complete tick, including 165.35 to 161.12 ms in the solver. The source was retained locally with `G5_REUSE_MEASURE_BODIES=1`, relaxation policy 1 and body cache disabled.
 
-**Decision: BASELINE RECOVERY PASS / G5 STILL OPEN.** The earlier missing-file blocker is resolved for continued engineering work, but the restored run is **not an exact numerical replay** and is **not a formal G5 qualification**. Keep policy 1 and `G5_BODY_CACHE=0` as production defaults. Preserve the isolated baseline for matched before/after experiments.
+**Decision: RETAIN THE NARROW OPTIMIZATION, DO NOT APPROVE G5.** The test covered five solver policies and ten short-run contact fixtures. Several individual fixture timings grew, and some iteration/color counts vary. Two cold samples per case do not qualify stable tail latency, a long-running simulation, or production release. The historical executable's bitwise replay remains unverified; the more recent local rebuilt executable difference is isolated to PE `.buildid` metadata.
 
-**Next action:** Explain the executable hash difference from linker/compiler provenance where possible without resetting or rewriting the user's workspace. Then measure and test one justified, semantics-preserving change to the 1,024-body solver's high per-iteration cost using a single automated headless sweep. Reject convergence, KKT, energy/momentum, or rollback regressions.
+**Next action:** Stop pursuing speculative body caches. Characterize why connected large-island solver work still requires roughly 4,000 color-ordered FP64 iterations. Design a single topology-independent way to reduce verified work, or identify one demonstrably redundant hot-loop computation, with the same matched headless sweep and untouched correctness limits. Preserve policy 1 and all prior control builds.
 
-**Evidence:** User-uploaded `G5-Baseline-Restored-20261018.zip`, 2026-10-18; source manifest and Windows preflight logs, 33 workflow tests, 17 focused sweep unit tests, 80 GPU trial exports and JSON/CSV comparison. The archived history differs numerically but matches all acceptance/structural checks. No G5 production code was committed by this documentation checkpoint.
+**Evidence:** `G5-Solver-Snapshot-Reuse-20261018.zip` (2026-10-18), containing 200 recorded GPU trials, verified 50-row summary, 33 unit tests, source/DXIL hashes, raw state/contact exports and build/linker logs. Archive and source were checked offline, but Windows GPU execution was not independently rerun in this review. No production shader code was committed to GitHub.
 
 ## 16. Risks and work still required
 
 1. **Strict state isolation:** Replace per-body in-place publication with a proven completed-generation handoff. Measure any copy or memory cost.
 2. **General island convergence:** Residual-gated policy 4 passes the limited quick sweep and avoids unnecessary restarts in branching/oblique cases. It remains opt-in and unqualified for sustained/general workloads; preserve KKT limits and rollback.
-3. **Large-island parallelism:** The 1,024-body global-memory solver takes roughly 167.5 ms on the present policy-4 sample. A cache variant reduced this but hurt aggregate throughput; real DRAM stalls and FP64 utilization remain unverified. Profile per-iteration cost before any multi-workgroup rewrite.
+3. **Large-island parallelism:** Snapshot reuse cut the 1,024-body policy-4 solver to about 161.12 ms, yet it still requires roughly 4,026 FP64 contact/color iterations. Actual DRAM stalls, synchronization share and FP64 utilization remain unverified. Focus on avoiding verified solver work before a multi-workgroup rewrite.
 4. **Scheduler scope:** A reusable resource monitor and dependency scheduler are design goals, not completed general-purpose services.
 5. **Display verification:** Collect real local display evidence for GPU-02 when required. Do not confuse Present calls with scanout.
 6. **Evidence and deterministic replay:** The isolated policy-4 baseline has been recovered with all 25 source hashes and a successful 80-run behavioral sweep. Historical and rebuilt CLI hashes differ and the comparison reports 156 numerical and 23 color-count differences. Track compiler/link inputs and exact revision, shader hashes, fixtures and GPU/driver context; do not claim byte-identical replay.
@@ -572,6 +598,7 @@ Next action:
 | 2026-10-18 | G5 shared-body-cache experiment — REJECT | Audited 100 CLI timing trials, 22 probes, 22 unit tests and the HLSL source. 1,024-body GPU p50 improved 170.13→152.69 ms, but aggregate geometric mean worsened 4.25%. Hardware counter attribution is unverified. Default remains cache-off; G5 open. |
 | 2026-10-18 | G5 baseline-recovery blocker — BLOCKED / PARTIAL RECOVERY | Local Codex run made no solver or GPU-test change after losing the policy-4 baseline. Exact 3.6 MB archive and workflow dependencies were found and SHA-verified, and a read-only recovery kit was made. Four source matches and Windows retest remain outstanding. |
 | 2026-10-18 | G5 isolated baseline — RECOVERED / NOT QUALIFIED | Restored 25 source files and six workflow hashes; archived 33 passing workflow tests, an 80-run Windows sweep, and 74 accepted/six expected rejected trials. Policy 4 passed 20/20. Rebuilt CLI differs in SHA and the per-run record has 156 numerical differences, so exact replay remains unverified. |
+| 2026-10-18 | G5 residual body-snapshot reuse — RETAIN LOCALLY | Audited a small HLSL change, static DXIL reductions, 200 control/candidate GPU trials and 33 unit tests. Retained after independent correctness checks and aggregate p50 improvements. 1,024-body GPU p50 167.33→162.99 ms, with individual fixture regressions and no formal G5 qualification. |
 
 ---
 
