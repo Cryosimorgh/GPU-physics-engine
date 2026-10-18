@@ -1,9 +1,18 @@
 """CPU preflight for profiler extraction and retention; executed by one sweep."""
 import unittest
-from profile_global import linear_fit, shared_bytes, cache_balance
+from profile_global import linear_fit, shared_bytes, cache_balance, skipped_measurements
 
 
 class GlobalProfileTests(unittest.TestCase):
+    def test_skipped_scans_count_only_forced_rebuilds(self):
+        for limit in (1,7,8,9,4095,4096):
+            for completed in (0,1,min(7,limit),limit):
+                expected=sum(i%8==0 or i==limit for i in range(1,completed+1))
+                self.assertEqual(skipped_measurements(completed,limit,True),expected)
+                self.assertEqual(skipped_measurements(completed,limit,False),0)
+        self.assertEqual(skipped_measurements(4026,4096,True),503)
+        with self.assertRaises(ValueError):skipped_measurements(9,8,True)
+
     def test_iteration_fit_keeps_fixed_and_incremental_cost_separate(self):
         fit = linear_fit([(1,45),(128,3855),(512,15375),(1024,30735)])
         self.assertAlmostEqual(fit['us_per_iteration'],30)

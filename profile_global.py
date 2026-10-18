@@ -26,7 +26,13 @@ def linear_fit(points):
                 note='empirical complete-solver slope/intercept; not an additive decomposition')
 
 
-def read_counts(row):
+def skipped_measurements(completed, limit, enabled):
+    """Scheduled prechecks only; an early convergence precheck is retained."""
+    require(0 <= completed <= limit, 'invalid completed/limit count')
+    return completed//8 + int(completed>0 and completed==limit and completed%8!=0) if enabled else 0
+
+
+def read_counts(row, skip_scheduled=False):
     payload = json.loads(Path(row['raw_json']).read_text())
     arena = Path(row['raw_json']+'-contacts-1.bin').read_bytes()
     record = struct.unpack_from('<14I', arena, 80*(payload['contact_capacity']-1))
@@ -39,6 +45,10 @@ def read_counts(row):
         color = struct.unpack_from('<I', arena, 80*k+52)[0]
         distribution[color] = distribution.get(color, 0)+1
     batches = sum((v+127)//128 for v in distribution.values())
+    command=row['command']
+    limit=min(int(command[command.index('--iterations')+1]),
+              int(command[command.index('--max-work')+1])//max(1,count))
+    omitted=skipped_measurements(it,limit,skip_scheduled)
     # These are logical full-Body source accesses. The compiler may eliminate
     # fields; coalescing, cache hits, DRAM transactions and stalls are UNVERIFIED.
     logical_global_velocity_bytes = 24*(n + (gets+puts if mode==0 else n))
@@ -48,7 +58,8 @@ def read_counts(row):
                 free_velocity_read_bytes=12*n*(rebuilds+restarts),
                 color_batches=batches, colors=colors,
                 device_barriers=batches*(it+rebuilds)+it+2*rebuilds+2*restarts+2,
-                group_barriers=8*(it+rebuilds)+2,
+                residual_scans_skipped=omitted,
+                group_barriers=8*(it+rebuilds-omitted)+2,
                 counter_instrumentation_excluded_from_barrier_model=True,
                 hardware_transactions_and_stall_time='UNVERIFIED')
 
@@ -174,7 +185,9 @@ def run(mode, resume=None):
         for name in ('GlobalCounts','CachedCounts'):
             row = probe(name,variants[name]['exe'],4096)
             require(row['status']=='CONVERGED','instrumented physics failed')
-            counts[name] = read_counts(row)
+            skip_scheduled=bool(re.search(r'^#define G5_SKIP_OVERWRITTEN_RESIDUAL 1\b',
+                                         (ROOT/'projected_solver.hlsl').read_text(),re.M))
+            counts[name] = read_counts(row,skip_scheduled=skip_scheduled)
         old = probe('GlobalPolicy2',variants['GlobalPolicy2']['exe'],4096)
         policy_checks = []
         for policy in (0,1,2,3):
@@ -184,7 +197,7 @@ def run(mode, resume=None):
         boundary = out/'chain-1025.bin'
         _,boundary_pairs = fixture('chain',1025,boundary)
         row = probe('CacheBoundary1025',variants['CachedCounts']['exe'],1,n=1025,path=boundary,expected=boundary_pairs)
-        boundary_counts = read_counts(row)
+        boundary_counts = read_counts(row,skip_scheduled=skip_scheduled)
         require(boundary_counts['mode']==0 and row['status']=='REJECTED' and row['proof']['rollback_verified'],
                 'oversized island did not use safe global fallback')
         summary,regressions = summarize(runs)

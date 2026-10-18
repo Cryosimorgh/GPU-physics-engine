@@ -5,6 +5,9 @@ struct Body {double vx,vy,omega,im,ii;uint sleep;};
 #ifndef G5_REUSE_MEASURE_BODIES
 #define G5_REUSE_MEASURE_BODIES 1
 #endif
+#ifndef G5_SKIP_OVERWRITTEN_RESIDUAL
+#define G5_SKIP_OVERWRITTEN_RESIDUAL 1
+#endif
 #ifndef G5_BODY_CACHE
 #define G5_BODY_CACHE 0
 #endif
@@ -220,7 +223,15 @@ void g5ProfileEnd(uint r,uint lane,uint completed,uint rebuilds,uint restarts){
 #endif
  for(;it<limit;it++){
   for(uint col=0;col<colors;col++)applyColor(r,col,lane,false,relaxation);
-  DeviceMemoryBarrierWithGroupSync();ratio=measure(r,lane,raw);
+  DeviceMemoryBarrierWithGroupSync();
+#if G5_SKIP_OVERWRITTEN_RESIDUAL
+  // On a scheduled reconstruction, this scan cannot affect the branch or any
+  // policy decision: the mandatory reconstructed-state scan overwrites it.
+  // Keep the device/group barrier and every post-reconstruction KKT check.
+  if(((it+1)&7)!=0&&it+1!=limit)ratio=measure(r,lane,raw);
+#else
+  ratio=measure(r,lane,raw);
+#endif
   if(ratio<=1||((it+1)&7)==0||it+1==limit){
 #if G5_PROFILE_COUNTS
    g5Rebuilds++;

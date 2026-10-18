@@ -38,8 +38,11 @@ def aggregate(rows, policy4=False):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode',nargs='?',choices=['quick'],default='quick')
-    parser.parse_args()
-    out=ROOT/'dev-test-results'/('g5-measure-snapshot-'+datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
+    parser.add_argument('--skip-overwritten-residual',action='store_true',help='compare scheduled residual-scan elision with retained snapshot baseline')
+    args=parser.parse_args()
+    skip=args.skip_overwritten_residual
+    prefix='g5-skip-residual-' if skip else 'g5-measure-snapshot-'
+    out=ROOT/'dev-test-results'/(prefix+datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
     out.mkdir(parents=True)
     workflow=Workflow(out)
     lock=workflow.cache/'running.lock'
@@ -50,14 +53,20 @@ def main():
         workflow.run('unit-tests',[sys.executable,'-m','unittest','test_dev_workflow','test_sweep_g5','test_global_profile','-q'],timeout=60)
         archive=ROOT.parent/'g5-recovery-kit/original/G5-Global-Solver-Cost-Handoff-20261018T090324676154Z.zip'
         with zipfile.ZipFile(archive) as z:original=json.loads(z.read('evidence/results.json'))
+        if skip:
+            previous_path=max((ROOT/'dev-test-results').glob('g5-measure-snapshot-*/results.json'),key=lambda p:p.stat().st_mtime)
+            previous=json.loads(previous_path.read_text())
+            require(previous['decision']=='RETAIN','snapshot baseline was not retained')
         assets=workflow.cache/'g5-sweep/PGS'
         fresh_cli=ROOT/'dev-test-results/solver-cost-inspection/fresh-control/physics.exe'
         require(fresh_cli.is_file(),'fresh unchanged same-toolchain CLI missing')
-        builds={}; static={}
+        builds={}; static={}; traces=[]
         for arm,enabled in [('control',0),('candidate',1)]:
+            reuse=1 if skip else enabled
+            skip_scan=enabled if skip else 0
             ready=out/f'{arm}-ph_ready.dxil'
             workflow.build('measure-ready-'+arm,['physics.hlsl'],[ready.relative_to(ROOT).as_posix()],
-                [sdk()[1],'-T','cs_6_0','-Gis','-D',f'G5_REUSE_MEASURE_BODIES={enabled}','-D','G5_BODY_CACHE=0',
+                [sdk()[1],'-T','cs_6_0','-Gis','-D',f'G5_REUSE_MEASURE_BODIES={reuse}','-D',f'G5_SKIP_OVERWRITTEN_RESIDUAL={skip_scan}','-D','G5_BODY_CACHE=0',
                  '-E','ph_ready','-Fo',ready,ROOT/'physics.hlsl'])
             for policy,name in POLICIES.items():
                 directory=out/f'{arm}-policy-{policy}';directory.mkdir()
@@ -69,22 +78,34 @@ def main():
                 shutil.copy2(ready,directory/'ph_ready.dxil')
                 binary=directory/'ph_solve.dxil'
                 command=[sdk()[1],'-T','cs_6_0','-Gis','-D',f'G5_RELAXATION_POLICY={policy}',
-                    '-D','G5_BODY_CACHE=0','-D',f'G5_REUSE_MEASURE_BODIES={enabled}',
+                    '-D','G5_BODY_CACHE=0','-D',f'G5_REUSE_MEASURE_BODIES={reuse}',
+                    '-D',f'G5_SKIP_OVERWRITTEN_RESIDUAL={skip_scan}',
                     '-E','ph_solve','-Fo',binary,ROOT/'physics.hlsl']
                 workflow.build(f'measure-{arm}-{policy}',['physics.hlsl'],[binary.relative_to(ROOT).as_posix()],command)
-                if arm=='control' and name in original['builds']:
-                    require(digest(binary)==original['builds'][name]['sha256']['ph_solve.dxil'],'control DXIL differs from archived '+name)
-                    require(digest(ready)==original['builds'][name]['sha256']['ph_ready.dxil'],'control ready DXIL differs')
+                reference=(previous['builds'][f'candidate-{policy}']['sha256'] if skip else
+                           original['builds'][name]['sha256'] if name in original['builds'] else None)
+                if arm=='control' and reference:
+                    require(digest(binary)==reference['ph_solve.dxil'],'control DXIL differs from retained baseline '+name)
+                    require(digest(ready)==reference['ph_ready.dxil'],'control ready DXIL differs')
                 _,text=workflow.run(f'dxil-{arm}-{policy}',[sdk()[1],'-dumpbin',binary])
                 static[f'{arm}-{policy}']=dxil_counts(text)
                 builds[f'{arm}-{policy}']=dict(exe=str(directory/'physics.exe'),sha256={p.name:digest(p) for p in directory.iterdir()})
+            if skip:
+                directory=out/f'{arm}-trace';shutil.copytree(out/f'{arm}-policy-4',directory)
+                binary=directory/'ph_solve.dxil'
+                workflow.build(f'skip-trace-{arm}',['physics.hlsl'],[binary.relative_to(ROOT).as_posix()],
+                    [sdk()[1],'-T','cs_6_0','-Gis','-D','G5_RELAXATION_POLICY=4','-D','G5_BODY_CACHE=0',
+                     '-D','G5_REUSE_MEASURE_BODIES=1','-D',f'G5_SKIP_OVERWRITTEN_RESIDUAL={skip_scan}',
+                     '-D','G5_TRACE=1','-E','ph_solve','-Fo',binary,ROOT/'physics.hlsl'])
+                builds[arm+'-trace']=dict(exe=str(directory/'physics.exe'),sha256={p.name:digest(p) for p in directory.iterdir()})
         for policy in POLICIES:
             a,b=static[f'control-{policy}'],static[f'candidate-{policy}']
             require(b['barriers']==a['barriers'],'barrier count changed')
-            require(b['buffer_loads']<a['buffer_loads'],'no compiled load reduction')
+            if not skip:require(b['buffer_loads']<a['buffer_loads'],'no compiled load reduction')
         # Rule declared before the first GPU case. Expected rejected attempts
         # remain explicit and cannot inflate the accepted-tick aggregate.
         rule='Retain only if all matched convergence/rejection and independent audits pass, and BOTH policy-4 and all accepted-policy aggregates improve in geometric mean and summed complete-tick p50.'
+        shutil.copy2(ROOT/'projected_solver.hlsl',out/'tested-projected_solver.hlsl')
         (out/'prepared.json').write_text(json.dumps(dict(rule=rule,builds=builds,static=static,source_sha256=sources),indent=2))
         fixtures=[]
         for topology in ('chain','branching','dense','oblique'):
@@ -98,6 +119,15 @@ def main():
                             row.update(arm=arm,policy=policy);runs.append(row)
                             (out/'progress.json').write_text(json.dumps(runs,indent=2))
                             require(row['status']!='TIMEOUT','GPU timeout: no further work submitted')
+        if skip:
+            for n in (64,256,1024):
+                path=out/f'chain-{n}.bin';_,expected=fixture('chain',n,path)
+                for arm in ('control','candidate'):
+                    trace_out=out/'traces'/arm;trace_out.mkdir(parents=True,exist_ok=True)
+                    row=execute(builds[arm+'-trace']['exe'],trace_out,'chain',n,'AdaptiveTrace',0,path,expected,20)
+                    row.update(arm=arm);traces.append(row)
+                    (out/'trace-progress.json').write_text(json.dumps(traces,indent=2))
+                    require(row['status']=='CONVERGED','residual trace failed; no further GPU work submitted')
         rows=[]; correctness=True
         for topology,n,policy in dict.fromkeys((r['topology'],r['n'],r['policy']) for r in runs):
             groups={arm:[r for r in runs if (r['topology'],r['n'],r['policy'],r['arm'])==(topology,n,policy,arm)] for arm in ('control','candidate')}
@@ -124,11 +154,16 @@ def main():
         retain=bool(correctness and p4['retain'] and all_policies['retain'])
         result=dict(decision='RETAIN' if retain else 'REJECT',qualification=False,correctness=correctness,
             rule=rule,policy4_balance=p4,all_policy_balance=all_policies,source_sha256=sources,
-            static_dxil=static,builds=builds,build_actions=workflow.actions,fixtures=fixtures,runs=runs,summary=rows,
+            experiment='skip overwritten pre-reconstruction residual scan' if skip else 'reuse measured body snapshot',
+            static_dxil=static,builds=builds,build_actions=workflow.actions,fixtures=fixtures,runs=runs,traces=traces,summary=rows,
             caveats=['Two cold samples per configuration: p95 is max, not a sustained-tail or statistical claim.',
                      'Color ordering can vary. Iteration/color counts are recorded for both arms.',
                      'Static DXIL instruction sites are not physical memory transactions or stall counters.'])
         (out/'results.json').write_text(json.dumps(result,indent=2))
+        if traces:
+            trace_rows=[dict(arm=r['arm'],n=r['n'],**record) for r in traces for record in r['trace']]
+            with (out/'residual-traces.csv').open('w',newline='') as f:
+                writer=csv.DictWriter(f,fieldnames=list(trace_rows[0]));writer.writeheader();writer.writerows(trace_rows)
         with (out/'results.csv').open('w',newline='') as f:
             writer=csv.DictWriter(f,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows)
         print('Policy 4: topology N GPU p50/p95 ms control -> candidate; solver ms; CPU ms; iterations')
