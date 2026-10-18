@@ -325,6 +325,31 @@ code shipped on `main` or the playable GitHub branch. The source and compiled
 binary hashes are reported in local JSON but binaries are not available here
 for independent execution. Neither G5 nor the candidate is production-qualified.
 
+### G5 global-memory solver profiling and body-cache experiment — REJECT (2026-10-18)
+
+**Tested change:** A bounded group-shared body-state cache for at most 1,024 connected bodies, in `projected_solver.hlsl`. It keeps current work velocities and sleep state in shared memory, uses the existing global-memory path above that limit, and leaves other solver policies available for the sweep. The compiler reported 30,728 bytes of group-shared memory for this variant. The cache was tested behind `G5_BODY_CACHE`; the delivered default remains **0** and production relaxation policy remains **1**.
+
+**Verification:** One serialized headless `python sweep_g5.py quick --profile-global` run produced 100 uninstrumented timing trials (ten deterministic fixtures × five solver configurations × two cold attempts) and 22 separate profiling/policy/boundary probes. The package includes 22 passing unit tests and archived per-run results. All **20 cached policy-4 trials converged** with passing invariant checks; across the 100 timing trials there were **94 accepted** and six expected PGS rejections with verified rollback. All 50 JSON summary medians match the recorded samples. A 1,025-body boundary probe used the global fallback and rejected/rolled back as expected.
+
+| Connected island | Policy-4 global p50 | Cached policy-4 p50 | Change |
+|---|---:|---:|---|
+| Chain, 16 bodies | 3.53 ms | 4.30 ms | **21.7% slower** |
+| Chain, 64 bodies | 3.09 ms | 3.77 ms | **21.9% slower** |
+| Chain, 256 bodies | 37.16 ms | 37.68 ms | 1.4% slower |
+| Chain, 1,024 bodies | 170.13 ms | **152.69 ms** | **10.3% faster** |
+| Branching, 256 bodies | 19.30 ms | 18.89 ms | 2.1% faster |
+| Oblique/friction, 256 bodies | 31.88 ms | 32.58 ms | 2.2% slower |
+
+The 1,024-body **solver stage** changed from 167.47 ms to 150.47 ms; iterations changed from 4,026 to 4,025. The cache improves the heavy chain but harms the equal-fixture geometric-mean GPU p50 by **4.25%** (ratio 1.04253), despite reducing the sum of fixture medians by **4.82%** (ratio 0.95176). It therefore **fails the predeclared two-part retention rule**. Two samples per fixture are not enough to claim a statistical or p95 gain.
+
+**Cost analysis and boundaries:** Rejected, rollback-verified PGS diagnostic probes yielded a complete-solver fit of **45.79 microseconds per iteration** and a **1.687 ms** fixed/intercept term. A synthetic barrier/reduction probe measured 0.674/0.811 ms for 128/512 virtual iterations; it is not an accepted physics solve or an additive synchronization share. Counted real runs recorded about **45,800 device barriers** and **36,240 group barriers**. Instrumented source-level body accesses imply about **1.100 GB of logical global working-velocity access** before caching, but compiler-elided loads, cache hits, real DRAM traffic, and stall time are not known. A bracketed empty-work queue interval of 0.837 ms contains multiple effects and is not pure dispatch overhead. Nvidia Nsight GPU performance counters were **not accessible** owing to permissions; no hardware-memory, FP64 utilization, or actual stall-cause attribution is established.
+
+**Decision:** **REJECT as a general default.** Preserve policy 1 and `G5_BODY_CACHE=0`. The changed shader and analysis scripts are provided only in the local handoff; this documentation update does not commit or activate shader changes. G5 remains **NOT QUALIFIED**.
+
+**Evidence:** Supplied `G5-Global-Solver-Cost-Handoff-20261018T090324676154Z.zip`; included `evidence/results.json`, `evidence/results.csv`, `evidence/profile.csv`, per-run JSON/logs, compiler diagnostics, and source. The archived and tested `projected_solver.hlsl` files match byte-for-byte; its SHA-256 matches the result manifest. A setup-only DXIL parser error, recorded in `setup-failure.json`, was fixed before GPU execution; the resumed run reused compiled artifacts. None of these local evidence files are claimed to be GitHub CI. The ZIP's `docs/ENGINE_ARCHITECTURE.md` is a **short experiment excerpt**, not this complete living record.
+
+**Next action:** Investigate the high cost per solver iteration, separating arithmetic, synchronization, and memory behavior as far as is possible with headless CLI and static DXIL analysis. If hardware counters remain unavailable, report **UNVERIFIED** rather than guessing. Test at most one narrowly justified correction against complete-tick baselines with the same automated quick sweep.
+
 ## 9. Global time, sleeping, and simulation state
 
 **Code:** `physics.c`, `physics.hlsl`, `viewer.c`.
@@ -446,26 +471,24 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G2** | Spatial search and contacts | **Passed in historical scoped tests** | Hash selected; contact construction verified. |
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
-| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Residual-gated policy 4 retained as opt-in; 20/20 local runs converge and aggregate GPU p50 improves 13.5% vs policy 3. Production remains policy 1; 1,024-body chain ~171.5 ms/tick. |
+| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Body-cache experiment rejected as general default: 1,024-body chain 170.13→152.69 ms, but geometric-mean cost worsened 4.25%. Policy 4 still opt-in; production remains policy 1. |
 | **G6** | Reproduce all gates, approve an engine foundation | **Not started / not authorized** | Requires G4/G5 closure and architecture proof. |
 
 ### Current G5 decision (2026-10-18)
 
-**Finding:** A fixed SOR factor of 1.995 converges on compressive chains but wastes iterations on other graphs. The first adaptive policy failed 256/1,024-body chains. Policy 3 restored convergence through a fixed one-time restart, but sometimes threw away useful progress. Policy 4 adds a residual-contraction gate at the same 512-iteration checkpoint (ratio threshold 0.8). This retains progress on improving networks and restarts only when the measured residual is not contracting fast enough.
+**Finding:** The residual-gated policy 4 remains an opt-in, locally tested convergence candidate. The latest experiment targeted memory cost in its 1,024-body one-workgroup solver. Group-shared body caching improved the large chain from 170.13 ms to 152.69 ms per attempted complete tick, without changing the 4,025–4,026 required iterations. However, it was slower on several other networks and **failed the predeclared equal-fixture aggregate criterion** (geometric mean +4.25%, despite sum of p50 times −4.82%). The experiment does not prove a particular DRAM bottleneck because GPU hardware counters were unavailable.
 
-**Decision: RETAIN POLICY 4 AS OPT-IN / G5 STILL OPEN.** In the local 80-run quick sweep, all 20 policy-4, 20 policy-3, and 20 fixed-SOR trials converged; PGS converged in 14/20. The candidate passed its predefined aggregate balance requirement, with a geometric-mean GPU p50 ratio of 0.8690 and a summed p50 ratio of 0.8650 against policy 3. It improved branching-256 from 33.63 to 15.57 ms and oblique-256 from 56.85 to 30.66 ms. Production policy 1 remains unchanged.
+**Decision: REJECT GENERAL BODY CACHE; G5 STILL OPEN.** Keep `G5_BODY_CACHE=0`, production policy 1, and all previously qualified solver limits and rollback. Do not infer a sustained 1,024-body performance improvement or label the reported logical load counts as measured physical GPU bandwidth.
 
-**Remaining risk:** Chain-256 still takes 39.78 ms (4,036 iterations), and chain-1,024 takes 171.52 ms (4,026–4,027 iterations), versus 33.52 ms and 149.12 ms using fixed SOR in this sweep. The 1,024-body case spends approximately 170.30 ms in the one-workgroup/global-memory solver, which now dominates this specific workload. Two cold samples per configuration do not qualify sustained or tail performance.
+**Next action:** Characterize the remaining per-iteration solver cost with headless CLI and available static shader analysis; if permitted GPU counters can be obtained later, use them only to validate a concrete hypothesis. Avoid GUI work, repetitive runs, and large campaigns. Implement a single small change only when the evidence identifies an avoidable cost and complete-tick correctness can be retained.
 
-**Next action:** Profile and correct the global-memory solver's 1,024-body bottleneck with one bounded change and an independent correctness check. Preserve the existing four policies and their fixture baseline; do not start unbounded optimization, a UI test, or a full campaign.
-
-**Evidence:** User uploads `results(4).json` and `ENGINE_ARCHITECTURE(2).md` (2026-10-18). The machine-readable sweep reports 17 passing unit tests, 80 timed runs, 10 trace checks, and local source/shader hashes. The evidence was not committed to GitHub CI. The documentation commit does not change solver code or mark policy 4 production-ready.
+**Evidence reference:** `G5-Global-Solver-Cost-Handoff-20261018T090324676154Z.zip`, 2026-10-18. Submitted local evidence: 100 timing trials, 22 diagnostic probes, 22 unit tests, 50 verified summary rows. Source and test evidence were reviewed; Windows D3D12 execution was not independently rerun here.
 
 ## 16. Risks and work still required
 
 1. **Strict state isolation:** Replace per-body in-place publication with a proven completed-generation handoff. Measure any copy or memory cost.
 2. **General island convergence:** Residual-gated policy 4 passes the limited quick sweep and avoids unnecessary restarts in branching/oblique cases. It remains opt-in and unqualified for sustained/general workloads; preserve KKT limits and rollback.
-3. **Large-island parallelism:** First profile the 1,024-body global-memory solver (about 170.30 ms of a 171.52 ms tick). Study memory traffic and synchronization before evaluating multi-workgroup approaches.
+3. **Large-island parallelism:** The 1,024-body global-memory solver takes roughly 167.5 ms on the present policy-4 sample. A cache variant reduced this but hurt aggregate throughput; real DRAM stalls and FP64 utilization remain unverified. Profile per-iteration cost before any multi-workgroup rewrite.
 4. **Scheduler scope:** A reusable resource monitor and dependency scheduler are design goals, not completed general-purpose services.
 5. **Display verification:** Collect real local display evidence for GPU-02 when required. Do not confuse Present calls with scanout.
 6. **Evidence discipline:** Keep the exact source revision, shader hashes, fixtures, and GPU/driver context with measurements. Do not combine numbers from different scenarios into one speed claim.
@@ -508,6 +531,7 @@ Next action:
 | 2026-10-18 | G5 adaptive-solver decision — FAIL | Reviewed 60 CLI runs and matching JSON/CSV summary. The adaptive policy converged in 16/20 runs but failed the 256- and 1,024-body chains. It was rejected; the previous policy remains the local baseline, and G5 stays open. |
 | 2026-10-18 | G5 bounded-restart candidate — CONDITIONAL | Reviewed 60 headless GPU runs and six diagnostics. Policy 3 converged in 20/20 local attempts, but 256/1,024-body chains and several branching/oblique networks suffered performance penalties. Production remains unchanged; G5 remains unqualified. |
 | 2026-10-18 | G5 residual-gated restart — OPT-IN RETAIN | Audited 80 short GPU timing runs, 10 trace checks and 17 reported sweep unit tests. Policy 4 converged in 20/20 and lowered aggregate GPU p50 sum by 13.5% relative to policy 3, but remained slow on large chains. Production policy 1 unchanged; G5 unqualified. |
+| 2026-10-18 | G5 shared-body-cache experiment — REJECT | Audited 100 CLI timing trials, 22 probes, 22 unit tests and the HLSL source. 1,024-body GPU p50 improved 170.13→152.69 ms, but aggregate geometric mean worsened 4.25%. Hardware counter attribution is unverified. Default remains cache-off; G5 open. |
 
 ---
 
