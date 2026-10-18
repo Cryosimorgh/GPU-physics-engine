@@ -5,7 +5,7 @@ from windows_sdk import run
 r=Path(__file__).parent
 if '--no-build' not in sys.argv:
  run(sys.executable,'build_physics.py');run(sys.executable,'build_viewer.py')
-files={'GPUPhysicsBench.exe':r/'zig-out/bin/GPUPhysicsBench.exe','Launch.bat':r/'Launch.bat','README.txt':r/'PORTABLE_README.txt'}
+files={'GPUPhysicsBench.exe':r/'zig-out/bin/GPUPhysicsBench.exe','Launch.bat':r/'LaunchBenchmark.bat','README.txt':r/'PORTABLE_README.txt'}
 files.update({p.name:p for p in r.glob('*.dxil')})
 if (r/'third_party/imgui/LICENSE.txt').is_file():files['LICENSE-ImGui.txt']=r/'third_party/imgui/LICENSE.txt'
 if (r/'APP_VERIFICATION.json').is_file():files['TEST_RESULTS.json']=r/'APP_VERIFICATION.json'

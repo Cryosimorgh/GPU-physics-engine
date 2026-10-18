@@ -2,9 +2,12 @@
 from pathlib import Path
 import ctypes as C
 from ctypes import wintypes as W
-import csv,datetime,json,math,os,shutil,struct,subprocess,time
+import argparse,csv,datetime,hashlib,json,math,os,shutil,struct,subprocess,time
 from PIL import Image
+from build_billiards import verify_build
 r=Path(__file__).resolve().parent
+parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--executable',type=Path);args=parser.parse_args();executable=(args.executable or r/'zig-out/bin/GPUPhysicsBilliards.exe').resolve()
+if args.executable is None:verify_build(r)
 out=r/'billiards-test-results'/('gameplay-'+datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ'));out.mkdir(parents=True)
 u=C.windll.user32;u.PostMessageW.argtypes=[W.HWND,W.UINT,W.WPARAM,W.LPARAM];u.GetClientRect.argtypes=[W.HWND,C.POINTER(W.RECT)];u.ClientToScreen.argtypes=[W.HWND,C.POINTER(W.POINT)];u.SetWindowPos.argtypes=[W.HWND,W.HWND,C.c_int,C.c_int,C.c_int,C.c_int,W.UINT];u.SetForegroundWindow.argtypes=[W.HWND];u.IsWindowVisible.argtypes=[W.HWND]
 cb=C.WINFUNCTYPE(W.BOOL,W.HWND,W.LPARAM)
@@ -33,13 +36,17 @@ def backbuffer(h):
   fresh=set(session.glob("screenshot-*.bmp"))-before
   if fresh:
    try:
-    with Image.open(sorted(fresh)[-1]) as image:return image.convert("RGB")
+    path=sorted(fresh)[-1]
+    with Image.open(path) as image:result=image.convert("RGB")
+    # Keep requested PNG keyframes and encoded footage, not hundreds of raw
+    # multi-megabyte intermediate backbuffer copies from this bounded capture.
+    path.unlink();return result
    except (OSError,ValueError):pass
   assert p.poll() is None,p.returncode;time.sleep(.005)
  raise TimeoutError("GPU backbuffer capture")
 def picture(h,name):
  im=backbuffer(h);im.save(out/(name+".png"));return im
-log=(out/'run.log').open('w');p=subprocess.Popen([str(r/'zig-out/bin/GPUPhysicsPlayground.exe'),'--quiet','--self-test','31','--output-dir',str(out)],cwd=r,stdout=log,stderr=subprocess.STDOUT)
+log=(out/'run.log').open('w');p=subprocess.Popen([str(executable),'--quiet','--self-test','31','--output-dir',str(out)],cwd=r,stdout=log,stderr=subprocess.STDOUT)
 encoder=None;frames=[]
 try:
  h=find(p);place(h);w,height,pt=size(h);picture(h,'initial-stationary-rack')
@@ -69,8 +76,13 @@ assert all(x['errors']==0 and x['n']==16 for x in f)
 assert max(x['contacts'] for x in f)>=3 and max(x['largest'] for x in f)>=3
 assert summary['dropped_telemetry_samples']==0 and not summary['writer_failed']
 assert 'SINGLE_STEP' in events and 'SCENE_REPLACED' in events
+second_strike=[i for i,x in enumerate(data['records']) if x['type']=='IMPULSE_COMMITTED'][1]
+reset=next(i for i in range(second_strike+1,len(data['records'])) if data['records'][i]['type']=='SCENE_REPLACED')
+settling=[x for x in data['records'][second_strike:reset] if x['type']=='FRAME' and x['simulated']]
+assert len(settling)>=8 and all(x['active']==0 for x in settling[-8:]),'Balls did not naturally settle before reset'
 scenes=[json.loads(x.read_text()) for x in sorted(session.glob('scene-*.json'))];assert scenes[0]['initial_state_sha256']==scenes[1]['initial_state_sha256']
 with (out/'capture-timestamps.csv').open('w',newline='') as file:
  writer=csv.writer(file);writer.writerow(['encoded_frame','capture_perf_counter_ns','phase']);writer.writerows(frames)
 result=dict(status='PASS',actual_simulated_ticks=sum(x['simulated'] for x in f),cue_strikes=len(committed),max_contacts=max(x['contacts'] for x in f),max_island=max(x['largest'] for x in f),deterministic_reset=True,video_actual_client_capture=True, capture_source='D3D12 actual swapchain backbuffer, fence-completed copies',encoded_frames=len(frames),encoded_cadence=15,capture_timestamps='capture-timestamps.csv',display_fps='UNVERIFIED',screenshots=[x.name for x in out.glob('*.png')])
+result.update(executable=str(executable),executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),natural_stopping_before_reset=True,last_eight_active_counts=[x['active'] for x in settling[-8:]])
 (out/'verification.json').write_text(json.dumps(result,indent=2));print(json.dumps(result,indent=2));print(out)
