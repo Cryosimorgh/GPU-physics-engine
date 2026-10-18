@@ -350,6 +350,18 @@ The 1,024-body **solver stage** changed from 167.47 ms to 150.47 ms; iterations 
 
 **Next action:** Investigate the high cost per solver iteration, separating arithmetic, synchronization, and memory behavior as far as is possible with headless CLI and static DXIL analysis. If hardware counters remain unavailable, report **UNVERIFIED** rather than guessing. Test at most one narrowly justified correction against complete-tick baselines with the same automated quick sweep.
 
+### G5 per-iteration optimization — baseline recovery blocked, evidence located (2026-10-18)
+
+**Failure report:** The user-supplied `G5-baseline-recovery-blocker.zip` contains a `BLOCKED` status, a documentation-only patch and a short status manifest. Codex could not reconstruct the measured G5 solver baseline after cleaning its local workspace. Its restored checkout at `3a29fc0ec9ff9ac54c0680e9130405368700074c` has the earlier fixed-relaxation shader but lacks `sweep_g5.py`, `profile_global.py`, the measured policy-4 shader and raw evidence. The blocker reports **no** GPU sweep, production shader change or optimization measurement. Its cited documentation commit `49fd7980253d69c64db4918c5a0ca113fd47d622` belongs to the local patch; this entry does not assert that the local commit was published.
+
+**Evidence recovery:** The exact original `G5-Global-Solver-Cost-Handoff-20261018T090324676154Z.zip` is still available in the conversation uploads. Its SHA-256 is `07dd2be67af66faf089bdc726feb1b0b4d7cdd59a7250a8fcf7d4acb327c0a18`, exactly the value required by the blocker. ZIP integrity passes. It contains `projected_solver.hlsl`, `sweep_g5.py`, `profile_global.py`, unit tests, deterministic fixture files and archived raw results, CSV, traces and build logs. The shader matches its archived tested copy and the source manifest at SHA-256 `f9b93e98d3fb78944ae6547530d77e94cf29013ca61313af41d3448194bb05f9`. Its compile-time defaults remain **policy 1** and **`G5_BODY_CACHE=0`**; historical policy-4 tests require an explicit `G5_RELAXATION_POLICY=4` compile setting.
+
+**Dependency check:** A hash-matched `profile_islands.py` was found in the previous G5 convergence handoff and a hash-matched `dev_test.py` in the requalified billiards handoff. In total, **seven** workflow files and **21 of 25** measured engine source files were recovered with matching SHA-256 hashes. Four baseline source files (`asset_path.h`, `physics.h`, `playground-layout.h`, `playground.hlsl`) have **not** been recovered from the accessible uploaded archives. They must be verified against the isolated target checkout before claiming a fully reproduced source baseline. The test binaries and original GPU execution environment are not bundled.
+
+**Artifact:** The newly prepared `G5-Baseline-Recovery-Kit-20261018.zip` contains the original intact archive, hash-matched dependencies, available source snapshots, a manifest and a read-only local verification script. The kit passed an offline SHA-256 and ZIP integrity check. It is a recovery **handoff**, not a tested rebuilt baseline or a code patch.
+
+**Decision: BLOCKED pending isolated baseline reconstruction.** Do not substitute an earlier solver's measurements for the policy-4 baseline, install unverified files into the user's dirty working tree, or claim another per-iteration optimization. Once all source hashes and build settings match, run one serialized headless quick sweep with the original unchanged shader to establish the Windows D3D12 baseline. Then profile or implement one semantics-preserving per-iteration change. G5 remains **NOT QUALIFIED**; G0–G4 status is unchanged.
+
 ## 9. Global time, sleeping, and simulation state
 
 **Code:** `physics.c`, `physics.hlsl`, `viewer.c`.
@@ -471,18 +483,18 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G2** | Spatial search and contacts | **Passed in historical scoped tests** | Hash selected; contact construction verified. |
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
-| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Body-cache experiment rejected as general default: 1,024-body chain 170.13→152.69 ms, but geometric-mean cost worsened 4.25%. Policy 4 still opt-in; production remains policy 1. |
+| **G5** | Large islands, convergence, robust solver performance | **BLOCKED — NOT QUALIFIED** | Local policy-4 baseline files were removed. Original evidence and matching workflow were recovered, but four source files and a fresh Windows GPU baseline still require verification. Production policy 1 unchanged. |
 | **G6** | Reproduce all gates, approve an engine foundation | **Not started / not authorized** | Requires G4/G5 closure and architecture proof. |
 
 ### Current G5 decision (2026-10-18)
 
-**Finding:** The residual-gated policy 4 remains an opt-in, locally tested convergence candidate. The latest experiment targeted memory cost in its 1,024-body one-workgroup solver. Group-shared body caching improved the large chain from 170.13 ms to 152.69 ms per attempted complete tick, without changing the 4,025–4,026 required iterations. However, it was slower on several other networks and **failed the predeclared equal-fixture aggregate criterion** (geometric mean +4.25%, despite sum of p50 times −4.82%). The experiment does not prove a particular DRAM bottleneck because GPU hardware counters were unavailable.
+**Finding:** Policy 4 is still an opt-in local research result, not a production solver. The latest global-memory cache trial failed the equal-fixture aggregate performance gate. The following per-iteration optimization attempt then stopped **before testing**, because the cleaned local checkout lacked the measured policy-4 shader, CLI sweep and evidence. The blocker itself is valid, but the exact evidence archive was later located and verified in the current conversation environment.
 
-**Decision: REJECT GENERAL BODY CACHE; G5 STILL OPEN.** Keep `G5_BODY_CACHE=0`, production policy 1, and all previously qualified solver limits and rollback. Do not infer a sustained 1,024-body performance improvement or label the reported logical load counts as measured physical GPU bandwidth.
+**Decision: BASELINE RECOVERY REQUIRED; G5 REMAINS BLOCKED.** The original G5 archive and hash-matched versions of the missing workflow dependencies are available in a focused recovery handoff. Four engine source files still require validation against a separate local checkout. No claim of tested baseline re-establishment or a new GPU performance result is supported. Production policy 1 and `G5_BODY_CACHE=0` remain unchanged.
 
-**Next action:** Characterize the remaining per-iteration solver cost with headless CLI and available static shader analysis; if permitted GPU counters can be obtained later, use them only to validate a concrete hypothesis. Avoid GUI work, repetitive runs, and large campaigns. Implement a single small change only when the evidence identifies an avoidable cost and complete-tick correctness can be retained.
+**Next action:** Validate the complete source and workflow hashes in an isolated working copy; preserve the user's uncommitted tree; rebuild policy 4 with the cache disabled; run one serialized, headless baseline sweep and compare against the archived fixtures. Resume performance optimization only after the baseline passes.
 
-**Evidence reference:** `G5-Global-Solver-Cost-Handoff-20261018T090324676154Z.zip`, 2026-10-18. Submitted local evidence: 100 timing trials, 22 diagnostic probes, 22 unit tests, 50 verified summary rows. Source and test evidence were reviewed; Windows D3D12 execution was not independently rerun here.
+**Evidence:** User-uploaded `G5-baseline-recovery-blocker.zip`, the exact SHA-verified `G5-Global-Solver-Cost-Handoff-20261018T090324676154Z.zip`, and the generated `G5-Baseline-Recovery-Kit-20261018.zip`. No Windows D3D12 test or source-code write was performed in this documentation checkpoint.
 
 ## 16. Risks and work still required
 
@@ -491,7 +503,7 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 3. **Large-island parallelism:** The 1,024-body global-memory solver takes roughly 167.5 ms on the present policy-4 sample. A cache variant reduced this but hurt aggregate throughput; real DRAM stalls and FP64 utilization remain unverified. Profile per-iteration cost before any multi-workgroup rewrite.
 4. **Scheduler scope:** A reusable resource monitor and dependency scheduler are design goals, not completed general-purpose services.
 5. **Display verification:** Collect real local display evidence for GPU-02 when required. Do not confuse Present calls with scanout.
-6. **Evidence discipline:** Keep the exact source revision, shader hashes, fixtures, and GPU/driver context with measurements. Do not combine numbers from different scenarios into one speed claim.
+6. **Evidence discipline and recovery:** The cleaned local G5 workspace lost the measured policy-4 source and scripts. A verified recovery kit is available, but four engine-source matches and the fresh Windows baseline are still pending. Keep exact revision, shader hashes, fixtures and GPU/driver context with all future measurements.
 7. **Production integration:** G6 must define API stability, error handling, host integration, and long-running device-loss recovery before an engine rewrite is authorized.
 
 ## 17. How to update this living document
@@ -532,6 +544,7 @@ Next action:
 | 2026-10-18 | G5 bounded-restart candidate — CONDITIONAL | Reviewed 60 headless GPU runs and six diagnostics. Policy 3 converged in 20/20 local attempts, but 256/1,024-body chains and several branching/oblique networks suffered performance penalties. Production remains unchanged; G5 remains unqualified. |
 | 2026-10-18 | G5 residual-gated restart — OPT-IN RETAIN | Audited 80 short GPU timing runs, 10 trace checks and 17 reported sweep unit tests. Policy 4 converged in 20/20 and lowered aggregate GPU p50 sum by 13.5% relative to policy 3, but remained slow on large chains. Production policy 1 unchanged; G5 unqualified. |
 | 2026-10-18 | G5 shared-body-cache experiment — REJECT | Audited 100 CLI timing trials, 22 probes, 22 unit tests and the HLSL source. 1,024-body GPU p50 improved 170.13→152.69 ms, but aggregate geometric mean worsened 4.25%. Hardware counter attribution is unverified. Default remains cache-off; G5 open. |
+| 2026-10-18 | G5 baseline-recovery blocker — BLOCKED / PARTIAL RECOVERY | Local Codex run made no solver or GPU-test change after losing the policy-4 baseline. Exact 3.6 MB archive and workflow dependencies were found and SHA-verified, and a read-only recovery kit was made. Four source matches and Windows retest remain outstanding. |
 
 ---
 
