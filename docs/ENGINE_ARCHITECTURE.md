@@ -176,7 +176,26 @@ These are the medians of **two cold, independent one-tick samples per configurat
 
 The results identify a clear trade-off: **fixed high relaxation rescues chains but often wastes thousands of iterations on other graphs**. For example, the 64-body dense fixture needs 107 PGS iterations and 3,232 SOR iterations. No one global factor has been qualified for all tested contact patterns.
 
-**Next experiment:** A solver policy based on measured residual contraction, not a fixed island-size threshold or a named fixture. Compare it against both PGS and fixed SOR in one automated headless sweep. Do not weaken the KKT limits to obtain faster results.
+### G5 adaptive relaxation trial — rejected (2026-10-18)
+
+A new local headless sweep compared **PGS**, **fixed SOR 1.995**, and one **adaptive residual-based** policy. It used ten deterministic cold compressive fixtures and two independent one-tick samples per solver and fixture (**60 runs**). The CSV matches all 30 JSON summary entries. Every accepted run passed the recorded independent invariants, and rejected attempts reported verified rollback.
+
+| One connected island | PGS GPU p50 | Fixed SOR GPU p50 | Adaptive GPU p50 | Adaptive outcome |
+|---|---:|---:|---:|---|
+| Chain, 64 bodies | Rejected / 19.67 ms | Accepted / 15.55 ms | **Accepted / 2.39 ms** | 366 iterations |
+| Chain, 256 bodies | Rejected / 39.39 ms | Accepted / 33.34 ms | **Rejected / 35.19 ms** | Reached 4,096 iterations |
+| Chain, 1,024 bodies | Rejected / 188.93 ms | Accepted / 150.51 ms | **Rejected / 175.11 ms** | Reached 4,096 iterations |
+| Branching, 256 bodies | Accepted / 15.26 ms | Accepted / 28.60 ms | Accepted / 15.63 ms | Near PGS cost |
+| Dense, 64 bodies | Accepted / 1.94 ms | Accepted / 28.23 ms | Accepted / 1.85 ms | Near PGS cost |
+| Oblique/friction, 256 bodies | Accepted / 34.95 ms | Accepted / 34.68 ms | Accepted / 33.92 ms | Near PGS cost |
+
+The adaptive policy converged in **16 of 20** attempts; fixed SOR converged in **20 of 20**, and PGS in **14 of 20**. It reduced the 64-body chain solver work substantially, but it lost required convergence for the larger chains. Reported rejected GPU times are failed **attempt costs**, not simulation throughput.
+
+**Decision: REJECT ADAPTIVE.** The submitted local results state that the pre-change source policy and production shader binaries were restored. The previous fixed-SOR policy remains the local working baseline; the restoration was **not followed by a separate GPU rerun**. No code or binary change was introduced by this documentation update.
+
+**Evidence:** User-uploaded `results(2).json` and `results(2).csv`; quick run, 2026-10-18; 2 samples per case, 4,096-iteration limit, no GBV or sustained workload claim. These evidence files are **local**, not GitHub CI. Recorded sweep SHA-256: `81de61132ef41cd1937d6c4f591e4cb528732b8d6`.
+
+**Next action:** Use a **headless residual-trajectory diagnostic** on chain sizes 64, 256, and 1,024 to find why adaptive relaxation stalls. Evaluate one safeguarded fallback or restart rule, with a strict work budget and both fixed baselines unchanged. Run a single consolidated sweep. Do not launch the viewer, capture screenshots, or start multi-workgroup solver development yet.
 
 ## 9. Global time, sleeping, and simulation state
 
@@ -299,21 +318,21 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G2** | Spatial search and contacts | **Passed in historical scoped tests** | Hash selected; contact construction verified. |
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
-| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Fixed SOR rescues chains but regresses on other topologies. |
+| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Fixed SOR rescues chains but is slow on other graphs; adaptive trial rejected on 256/1,024-body chains. |
 | **G6** | Reproduce all gates, approve an engine foundation | **Not started / not authorized** | Requires G4/G5 closure and architecture proof. |
 
 ### Current G5 decision (2026-10-18)
 
-**Finding:** Fixed SOR = 1.995 is not a safe universal optimization. It improves difficult chains but slows the 64-body dense workload by about **12.3 times** relative to PGS. Both configurations passed the local invariant tests on that dense fixture. The sweep alone does not prove robust performance across sustained simulation.
+**Finding:** A fixed SOR factor of 1.995 converged in all submitted short-run cases but was much slower than PGS on several ordinary graphs. The new residual-based adaptive trial improved the 64-body chain from 15.55 ms to 2.39 ms; however, it **failed convergence** at 256 and 1,024 bodies, where fixed SOR passed.
 
-**Decision:** Keep the current G5 policy experimental. Test one topology-independent adaptive relaxation policy against both baselines. Do not start multi-workgroup optimization until the convergence policy no longer wastes thousands of iterations on common contact graphs.
+**Decision:** Reject this adaptive implementation. Keep the previously tested solver policy as the baseline. Diagnose the residual trajectory before designing a safeguarded policy. Do not approve G5, infer sustained performance, or claim that the restored shader binaries were retested after restoration.
 
-**Evidence reference:** User-supplied `results.json` and `results.csv`, quick sweep dated 2026-10-18. These files are **not committed** to `main`; they must not be represented as GitHub CI results.
+**Evidence reference:** User-uploaded `results(2).json` and `results(2).csv`, 2026-10-18, quick 60-run sweep (10 fixtures × 3 solvers × 2 samples). Both files remain local and are not committed CI artifacts.
 
 ## 16. Risks and work still required
 
 1. **Strict state isolation:** Replace per-body in-place publication with a proven completed-generation handoff. Measure any copy or memory cost.
-2. **General island convergence:** Evaluate adaptive relaxation on chain, branching, dense, and frictional cases. Keep the original residual and failure limits.
+2. **General island convergence:** The first residual-based adaptive policy was rejected; it failed 256/1,024-body compressive chains. Inspect contraction history and design a bounded fallback that preserves all KKT limits and rollback.
 3. **Large-island parallelism:** Study multi-workgroup solve after the numerical policy is stable. Compare local-memory and global-memory paths.
 4. **Scheduler scope:** A reusable resource monitor and dependency scheduler are design goals, not completed general-purpose services.
 5. **Display verification:** Collect real local display evidence for GPU-02 when required. Do not confuse Present calls with scanout.
@@ -354,6 +373,7 @@ Next action:
 | Date | Breakpoint | Record update |
 |---|---|---|
 | 2026-10-18 | Baseline document | Established the technical inventory, G0–G5 history, evidence labels, known risks, and mandatory breakpoint update process. No new gate was approved by this documentation commit. |
+| 2026-10-18 | G5 adaptive-solver decision — FAIL | Reviewed 60 CLI runs and matching JSON/CSV summary. The adaptive policy converged in 16/20 runs but failed the 256- and 1,024-body chains. It was rejected; the previous policy remains the local baseline, and G5 stays open. |
 
 ---
 
