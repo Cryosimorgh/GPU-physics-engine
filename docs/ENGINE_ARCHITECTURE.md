@@ -350,6 +350,14 @@ The 1,024-body **solver stage** changed from 167.47 ms to 150.47 ms; iterations 
 
 **Next action:** Investigate the high cost per solver iteration, separating arithmetic, synchronization, and memory behavior as far as is possible with headless CLI and static DXIL analysis. If hardware counters remain unavailable, report **UNVERIFIED** rather than guessing. Test at most one narrowly justified correction against complete-tick baselines with the same automated quick sweep.
 
+### G5 per-iteration optimization - baseline recovery blocked (2026-10-18)
+
+The cleanup removed the local-only G5 shader, sweep, profile scripts, and raw evidence. The restored checkout at `3a29fc0ec9ff9ac54c0680e9130405368700074c` contains decision records but not `sweep_g5.py` or `profile_global.py`. Its shader has the earlier fixed large-island relaxation implementation, not the measured policy-4 implementation. The main and physics-correction branch trees also lack the sweep/profile scripts.
+
+**Decision:** Do not substitute the earlier solver for the unchanged 167 ms baseline. No shader change, GPU sweep, or optimization retention decision was made. Complete tick, solver time, iterations, CPU submission, KKT, rollback, and aggregate performance comparisons remain **UNVERIFIED** for this request. G0-G4 statuses are unchanged; G5 remains **NOT QUALIFIED**.
+
+**Required recovery:** Restore `G5-Global-Solver-Cost-Handoff-20261018T090324676154Z.zip` (previous SHA-256 `07dd2be67af66faf089bdc726feb1b0b4d7cdd59a7250a8fcf7d4acb327c0a18`) or an equivalent complete snapshot with the tested policy-4 shader, verified build workflow, sweep, fixtures, and baseline evidence. Then inspect that exact source/DXIL and run one matched serialized quick sweep. Recreating the deleted solver policies or harness is outside this one-correction task.
+
 ## 9. Global time, sleeping, and simulation state
 
 **Code:** `physics.c`, `physics.hlsl`, `viewer.c`.
