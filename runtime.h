@@ -53,3 +53,21 @@ int s_recording(StorageDevice*);
 
 // Execute only while the GPU 64-bit predicate is zero; handle 0 disables.
 int s_predicate_zero(StorageDevice*,uint64_t,uint64_t);
+
+// Recording cancellation discards only the unsubmitted packet; earlier split
+// packets remain fence-owned. Device removal is fail-closed, never completion.
+int s_abort(StorageDevice*);
+void s_record_checkpoint(StorageDevice*);
+uint64_t s_unique_id(void);
+uint64_t s_identity(StorageDevice*);
+int s_state_owner_hold(StorageDevice*);
+void s_state_owner_drop(StorageDevice*);
+int s_test_device_identity(StorageDevice*);
+void *s_completion_retain(StorageDevice*,void*);
+int s_completion_ready(void*,uint64_t);
+void s_completion_release(void*);
+void s_fail_dispatch_after(StorageDevice*,uint32_t);
+// Headless secondary-copy-queue regression helpers; never called in normal ticks.
+void *s_test_reader(StorageDevice*,uint64_t,uint64_t,void**);
+int s_test_reader_finish(void*,uint64_t*);
+int s_test_reader_start(void*);

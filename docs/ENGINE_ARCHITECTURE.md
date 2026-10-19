@@ -4,7 +4,7 @@
 **Record date:** 2026-10-19
 **Document type:** Living engineering record  
 **Style:** Clear technical English, based on ASD-STE100 principles without strict controlled-language limits  
-**Status:** Experimental GPU physics engine. G5 and production release are **not qualified**.
+**Status:** Experimental GPU physics engine. G5 is **DEFERRED / NOT QUALIFIED**. G6-P1 is preparation only; G6 and production release are **not qualified**.
 
 > **Update rule:** Update this document in the same change that closes, rejects, or reopens a development breakpoint. Keep prior results and their limitations. Do not turn a local experiment into a released feature by changing its status here.
 
@@ -64,7 +64,7 @@ Inputs / scene / structural commands
 
 The order is important. Broad-phase search must precede contact solving. Contact graph data must be complete before the solver uses it. A result must pass validation before clients treat it as accepted state.
 
-**Architectural gap:** The G4 `ph_publish` shader writes accepted per-body results back to the original `source` buffer. It is guarded by validation, but it is **not yet a strict full-generation buffer swap**. The intended rule is that `S(t)` remains read-only for the entire tick, and only a validated `S(t+1)` becomes visible. This requirement remains open until source bindings, publication, in-flight ownership, and failure behavior prove it. Do not call strict immutable snapshot isolation complete.
+**G6-P1 state isolation (local preparation):** `ph_publish` still writes the producer-private G1 source after all existing GPU checks. Consumers that retain a generation now use separately owned immutable publication slots and leases. A completed slot becomes accepted only after its terminal compute fence and the existing completed-frame validation header agree. This closes the retained-consumer aliasing gap for the new lease API without changing the solver or its private trial/source equations. Raw G1 handles remain internal borrowed resources. Existing rendering relies on its original same-queue ordering or fenced per-frame snapshots. Formal G6 and device-loss recovery remain unqualified; see the G6-P1 decision below.
 
 ## 3. GPU backend and execution control
 
@@ -562,6 +562,49 @@ The playable branch reports independent tests for collision impulses, energy, ro
 
 **Engineering lesson:** Separate a physical product demonstration from a synthetic stress workload. Otherwise the test's artificial forces and initial velocities appear as game-physics defects.
 
+## G6-P1 decision: immutable consumer generations (2026-10-19)
+
+**Decision: retain as preparation only.** Isolated branch `g6-p1-state-isolation-20261019`, based on `a147f6bf265bc82060107358cd41157e38d371c2`. The original `g5-anderson-work` tree, including its three dirty binaries, is unchanged. G5 is **DEFERRED / NOT QUALIFIED**. G6 is **NOT QUALIFIED**. No solver experiment or production-policy change was made. All control/candidate DXIL files match; the retained solver source remains `10c5ee6541c7799119a9578b304c51f8d3de3938e2221613894bc7fae75d5c24`.
+
+### Lifecycle audit and ownership contract
+
+1. The G1 source and identity maps are borrowed producer resources. At tick start, source is copied to the existing trial. Preparation, discovery, contacts, coloring, and the unchanged FP64 solver modify trial/scratch, not the leased accepted generation (`physics.c`, `record_frame`).
+2. Existing contact/body/pair/guard checks precede `ph_publish`, with UAV barriers. Its common error flag suppresses all source and persistent rolling-state writes on rejection (`physics.hlsl`, `ph_check_bodies`, `ph_publish`). Per-body source writes were safe for the serial producer but were unsuitable for an unfenced consumer retaining a raw source handle.
+3. After publication, GPU copies components, the 256-byte acceptance header, identity maps, and pool accepted rolling/material fields into a free owned slot. Trial rolling fields and scratch are not published. The slot ends in COMMON. The existing submit fence owns all copies (`state-publication.inc`, `state_record_copy`). No extra tick readback, CPU wait, allocation, or upload was added.
+4. `ph_decode_frame` uses the existing completed-frame header to accept the matching pending slot only after its terminal fence. Tick, epoch, published count, runtime validation, and completion replay are checked. Rejection leaves the accepted slot unchanged. Publication is a CPU-owned pointer to a completed immutable GPU resource, not a new GPU scheduler or shader-side pointer swap.
+5. Leases carry runtime identity, Physics context identity, nonwrapping serial, unique acquisition nonce, buffer, ready fence, tick, GPU generation, epoch, and capacity. The fixed 64-entry table rejects stale/forged/double releases. A CPU owner releases only after all access ends. Each GPU reader registers its native-device completion fence **before submission**; release fails until that fence completes. Each independent reader needs its own lease. GPU consumers restore COMMON before completing. Owner-thread API calls are serialized; concurrent CPU calls are outside this contract.
+6. Two slots are pre-admitted. Explicit reserve allows at most four. The accepted slot, pending slots, pinned slots, and fence-incomplete slots cannot be reused. Exhaustion returns error 60 before advancing the tick. There is no implicit growth, truncation, or consumer eviction. `ph_try_close` refuses live leases; the device refuses closure while Physics owners exist. Callers must drain/release consumers, close Physics successfully, then destroy storage/device.
+7. Dispatch-recording failure discards only the unsubmitted packet and restores resource-state bookkeeping to its last checkpoint. Earlier split packets retain fence ownership. The Physics context becomes fail-closed; its accepted snapshot remains readable. Real submit/device-removal failures retain the runtime's existing process fail-stop boundary. They are not claimed as recoverable.
+8. Structural edits require drained producers and no leases, and reseed the snapshot with the actual GPU generation/epoch. Existing CLI mutation paths check this guard. Raw `ph_read`/G1 readbacks are diagnostic borrows valid only through their documented unmap, not persistent generation leases.
+9. Existing viewer code remains protected by same-queue ordering when reading source, or a separate queue wait plus per-frame copies. Frame reuse waits both compute and graphics fences (`viewer.c`, `vfinish`, `vbegin_physics`, `viewer_open`). It now reserves depth+1 publication slots and checkpoints recording state. It was compiled only, never launched. No networking implementation exists; no network integration is claimed.
+
+### Exact bounded memory and measured cost
+
+For capacity C, one slot is `76*C + 256 + (pool ? 160 : 0)` logical bytes: 64*C SoA components, 256-byte header, 12*C identity maps, and optionally 32-byte material plus 128-byte accepted rolling state. Each committed size comes from `GetResourceAllocationInfo`, with checked 64-bit arithmetic, UINT32 address bounds, current DXGI admission and configured reserve. `ph_ledger` includes exact publication slots/bytes/committed totals. Two default slots at tested C=32 add **131,072 committed bytes**; four slots add 262,144. Host lease storage is fixed and bounded. GPU-only test helpers additionally own one bounded readback and a secondary queue; their diagnostic copies do not run in normal ticks. Driver/queue allocation residency is not inferred from logical byte counts.
+
+Paired unchanged-source control and candidate, NVIDIA GeForce RTX 4070 Ti SUPER; two AB/BA process pairs per workload, 32 warm samples per process, 64 per arm/workload. Times below are microseconds. CPU combined medians are measured directly, not the sum of independent medians.
+
+| Workload | Build | GPU p50/p95 | CPU record p50 + submit p50 | CPU combined p50 |
+|---|---|---:|---:|---:|
+| idle | control | 262.00/265.00 | 199.80 + 12.70 | 212.50 |
+| idle | candidate | 263.75/267.00 | 201.60 + 11.70 | 213.50 |
+| break | control | 856.00/1036.50 | 204.30 + 15.80 | 218.90 |
+| break | candidate | 761.00/1043.25 | 204.40 + 13.60 | 218.30 |
+| moving | control | 398.00/399.25 | 208.70 + 15.80 | 225.10 |
+| moving | candidate | 398.50/399.75 | 211.20 + 13.40 | 224.70 |
+
+These are scoped cost measurements, not an optimization claim or sustained p95 qualification. Break/contact ordering and runtime latency vary. No large-island campaign was run. All matched complete published-state hashes agree. Full per-tick samples and publication-tail timings are retained.
+
+### Verification, evidence boundary, and next action
+
+`python run_g6_p1.py` builds/reuses verified artifacts and runs one serialized bounded batch. `prepare_g6_control.py` verifies the archived control or builds the frozen baseline from isolated Git sources, without editing the working tree. Evidence: `evidence/g6-p1/results.json`, `results.csv`, `comparison.csv`, `gate-G6-P1.json`, source/binary manifest, complete logs, and previous failed harness attempts, all included in the focused handoff rather than a new release package.
+
+The final batch passes **21 process runs**: successful publication; real solver nonconvergence and rollback; validation rejection; existing admission retry; delayed GPU consumer on a second copy queue while the producer advances; unfinished/replayed completion rejection; generation reuse, stale and forged handles; slot/lease exhaustion; partial allocation cleanup and exact retirement; before/after-split recording failures; persistent pool snapshots; epoch reseeding; idle, collision, first-contact/wake, energy, discovery, ownership, generational ID reuse, and deletion/compaction regressions. D3D12 debug validation reports zero errors. Viewer integration compiles headlessly. Earlier test defects (fence test omitted the new slots; result collection key collision; assumed distinct native devices) were corrected and their failed evidence preserved.
+
+**UNVERIFIED:** forced hardware dispatch failure, actual device removal/recovery, physically different native-device fence rejection (the tested runtime instances share Windows' native D3D12 device), sustained many-consumer operation, and new interactive rendering runs. The test proves distinct runtime/context identities across recreation, not device-loss recovery. G0-G4 evidence is unchanged; GPU-02 remains UNVERIFIED. Do not label this formal G6 qualification.
+
+**Next action:** define and implement device-loss consumer cancellation and teardown/recovery boundaries, then qualify broader consumer integration. Keep G5 deferred; do not resume solver optimization as part of this work.
+
 ## 13. Verification and low-cost test workflow
 
 **Code:** `physics_verify.c`, `physics_tests.c`, `tests.zig`; on the playable branch `dev_test.py`, `test_dev_workflow.py`, and the billiards test scripts.
@@ -613,8 +656,8 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G2** | Spatial search and contacts | **Passed in historical scoped tests** | Hash selected; contact construction verified. |
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
-| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Bounded Anderson acceleration reduced work on several fixtures but lost convergence in eight previously converging configurations. Rejected; exact retained solver and all production defaults preserved. |
-| **G6** | Reproduce all gates, approve an engine foundation | **Not started / not authorized** | Requires G4/G5 closure and architecture proof. |
+| **G5** | Large islands, convergence, robust solver performance | **DEFERRED / NOT QUALIFIED** | Bounded Anderson acceleration reduced work on several fixtures but lost convergence in eight previously converging configurations. Rejected; exact retained solver and all production defaults preserved. |
+| **G6** | Reproduce all gates, approve an engine foundation | **NOT QUALIFIED; G6-P1 preparation only** | G5 deferred. Local publication tests do not qualify G6 or approve an engine foundation. |
 
 ### Current G5 decision (2026-10-18)
 
@@ -735,7 +778,7 @@ The 1,024-body attempted complete tick was 193.555→178.800 ms, schedule bracke
 
 ## 16. Risks and work still required
 
-1. **Strict state isolation:** Replace per-body in-place publication with a proven completed-generation handoff. Measure any copy or memory cost.
+1. **State isolation follow-up:** Integrate future consumers through the G6-P1 lease API. Qualify device-loss teardown/recovery and sustained ownership under broader workloads before formal G6.
 2. **General island convergence:** Residual-gated policy 4 passes the limited quick sweep and avoids unnecessary restarts in branching/oblique cases. It remains opt-in and unqualified for sustained/general workloads; preserve KKT limits and rollback.
 3. **Large-island parallelism:** The 1,024-body global-memory solver takes roughly 167.5 ms on the present policy-4 sample. A cache variant reduced this but hurt aggregate throughput; real DRAM stalls and FP64 utilization remain unverified. Profile per-iteration cost before any multi-workgroup rewrite.
 4. **Scheduler scope:** A reusable resource monitor and dependency scheduler are design goals, not completed general-purpose services.
@@ -780,6 +823,7 @@ Next action:
 
 | Date | Breakpoint | Record update |
 |---|---|---|
+| 2026-10-19 | G6-P1 consumer generation isolation — LOCAL PREPARATION PASS | Added bounded immutable GPU snapshots, completion-bound leases, explicit backpressure and failure ownership. Twenty-one headless process runs pass; paired costs recorded. G5 DEFERRED / NOT QUALIFIED; G6 NOT QUALIFIED; device loss remains unverified. |
 | 2026-10-18 | Baseline document | Established the technical inventory, G0–G5 history, evidence labels, known risks, and mandatory breakpoint update process. No new gate was approved by this documentation commit. |
 | 2026-10-18 | G5 adaptive-solver decision — FAIL | Reviewed 60 CLI runs and matching JSON/CSV summary. The adaptive policy converged in 16/20 runs but failed the 256- and 1,024-body chains. It was rejected; the previous policy remains the local baseline, and G5 stays open. |
 | 2026-10-18 | G5 bounded-restart candidate — CONDITIONAL | Reviewed 60 headless GPU runs and six diagnostics. Policy 3 converged in 20/20 local attempts, but 256/1,024-body chains and several branching/oblique networks suffered performance penalties. Production remains unchanged; G5 remains unqualified. |
