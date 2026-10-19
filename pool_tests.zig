@@ -35,7 +35,9 @@ pub fn main()!void{
  var arg:usize=1;while(arg<arguments.len):(arg+=1){if(std.mem.eql(u8,arguments[arg],"--expect-one-packet")){expect_single=true;}else if(std.mem.eql(u8,arguments[arg],"--debug")){debug_checks=true;}else if(std.mem.eql(u8,arguments[arg],"--quick")){quick=true;debug_checks=false;}else if(std.mem.eql(u8,arguments[arg],"--case") or std.mem.eql(u8,arguments[arg],"--workload")){const is_workload=std.mem.eql(u8,arguments[arg],"--workload");arg+=1;if(arg>=arguments.len)return error.Argument;if(is_workload)workload=arguments[arg] else selected=arguments[arg];}else return error.Argument;}
  const all=std.mem.eql(u8,selected,"all");const idle=all or std.mem.eql(u8,selected,"idle");const collisions=all or std.mem.eql(u8,selected,"collisions");const losses=all or std.mem.eql(u8,selected,"energy");const regression=all or std.mem.eql(u8,selected,"regression");const overhead=std.mem.eql(u8,selected,"overhead");const ownership=std.mem.eql(u8,selected,"ownership");
  const discovery=std.mem.eql(u8,selected,"discovery");
- if(!idle and !collisions and !losses and !regression and !overhead and !ownership and !discovery)return error.UnknownCase;
+ const rail_case=std.mem.eql(u8,selected,"rails");
+ if(!idle and !collisions and !losses and !regression and !overhead and !ownership and !discovery and !rail_case)return error.UnknownCase;
+ if(rail_case)try railTests(debug_checks);
  if(!std.mem.eql(u8,workload,"idle") and !std.mem.eql(u8,workload,"break") and !std.mem.eql(u8,workload,"moving"))return error.UnknownWorkload;
  const idle_ticks:usize=if(quick)32 else 10000;
  if(discovery){var f=try F.open(debug_checks);defer f.close();try f.pair(.{1,0});var a=try f.state();a[0][2]=0;a[1][0]=@bitCast(@as(u32,@bitCast(a[1][0]))+1);if(@as(f64,a[1][0])-a[0][0]<=@as(f64,a[0][8])+a[1][8])return error.TelemetryFixtureOverlap;try f.input(a);const q=try f.step();const work=try roundWork(&f,q);if(q.contacts!=0 or work.executed!=1 or work.skipped!=8 or work.pairs!=1 or work.raw_pairs!=9)return error.SkippedWorkDoubleCount;std.debug.print("PASS discovery telemetry: executed={d} skipped={d} accepted_candidates={d} raw_snapshots={d}\n",.{work.executed,work.skipped,work.pairs,work.raw_pairs});}
@@ -74,4 +76,75 @@ pub fn main()!void{
  std.debug.print("PASS existing D3D12 {s} tick overhead, contact_ticks={d}, solver_ticks={d}\n",.{workload,contact_ticks,solver_ticks});
  }
  std.debug.print("PASS pool analytical suite accepted_ticks={d} rejected_ticks={d} processed_objects={d}\n",.{accepted_ticks,rejected_ticks,16*accepted_ticks});
+}
+
+fn railTests(debug:bool)!void{
+ const radius:f32=@floatCast(c.POOL_RADIUS);
+ var cases:u32=0;
+ {
+ var f=try F.open(debug);defer f.close();try f.material(0,0,0,0,0,0);
+ for(0..4)|wall|for(0..6)|kind|{
+  var a=try f.state();
+  for(&a,0..)|*b,i|{b[0]=0.15+@as(f32,@floatFromInt(i))*0.14;b[1]=0.9;b[2]=0;b[3]=0;b[5]=0;b[12]=@bitCast(@as(u32,0));b[13]=@bitCast(@as(u32,0));b[14]=@bitCast(@as(u32,1));}
+  // A binary radius makes the exact boundary representable on every rail.
+  const r:f32=if(kind==0)0.03125 else radius;
+  const bound:f32=if(wall<2)@floatCast(c.POOL_TABLE_WIDTH) else @floatCast(c.POOL_TABLE_HEIGHT);
+  const high=wall%2==1;const axis:usize=if(wall<2)0 else 1;
+  var pos:f32=if(high)bound-r else r;
+  if(kind==1)pos=@bitCast(@as(u32,@bitCast(pos))+(if(high)@as(u32,1) else 0));
+  if(kind==2)pos=@bitCast(@as(u32,@bitCast(pos))+(if(high)@as(u32,0) else 1));
+  if(kind==3)pos=@bitCast(@as(u32,@bitCast(pos))-(if(high)@as(u32,1) else 1));
+  if(kind==4)pos=if(high)bound-r-0.0003814 else r+0.0003814;
+  if(kind==5)pos=if(high)bound-r-0.001 else r+0.001;
+  a[0][0]=0.5;a[0][1]=0.4;a[0][axis]=pos;a[0][8]=r;a[0][7]=1/(0.4*@as(f32,@floatCast(c.POOL_MASS))*r*r);
+  const normal:f64=if(high)-1 else 1;
+  a[0][axis+2]=@floatCast(normal*(if(kind==5)@as(f64,0.01) else -0.1));
+  // Persistent zero-restitution contacts exercise the gap-limited target.
+  a[0][12]=@bitCast(@as(u32,1)<<@intCast(16+wall));
+  try f.input(a);
+  // Independent host calculation from the stored binary32 values.
+  const gap:f64=if(high)@as(f64,bound)-@as(f64,r)-@as(f64,pos) else @as(f64,pos)-@as(f64,r);
+  if(kind==0 and gap!=0)return error.ExactRailBoundary;
+  if((kind==2 and !high or kind==3 and high or kind>=4) and gap<=0)return error.RailGapSign;
+  const target:f32=@floatCast(-@max(@as(f64,0),gap)*128);
+  const q=try f.step();
+  if(q.contacts!=(if(kind==5)@as(u32,0) else 1))return error.RailContactCoverage;
+  var residual:f64=0;var threshold:f64=0;
+  if(q.contacts!=0){
+   var ptr:?*const anyopaque=null;var bytes:u64=0;
+   if(c.ph_read(f.p,3,&ptr,&bytes)==0)return error.RailRead;
+   const words=@as([*]const u32,@ptrCast(@alignCast(ptr.?)));
+   const got_target:f32=@bitCast(words[5]);const got_gap:f32=@bitCast(words[12]);
+   const ids_ok=words[0]==0 and words[1]==16+wall;
+   if(c.ph_unmap(f.p)==0)return error.RailUnmap;
+   if(!ids_ok or got_target!=target or got_gap!=@as(f32,@floatCast(gap)))return error.RailGeometryMagnitude;
+   const observed=try f.state();const vx:f64=observed[0][2];const vy:f64=observed[0][3];
+   residual=@abs(@as(f64,observed[0][axis+2])*normal+@max(@as(f64,0),gap)*128);
+   threshold=44.0*1.1920928955078125e-7*@max(@as(f64,0.001),@max(@abs(@as(f64,target)),@max(@abs(vx),@abs(vy))))+8.0*1.1920928955078125e-7*@abs(@as(f64,observed[0][5])*r);
+   if(residual>threshold)return error.RailIndependentResidual;
+  }
+  std.debug.print("RAIL {{\"wall\":{d},\"kind\":{d},\"gap64\":{d},\"target32\":{d},\"contacts\":{d},\"normal_residual\":{d},\"threshold\":{d}}}\n",.{wall,kind,gap,target,q.contacts,residual,threshold});cases+=1;
+ };
+ }
+ // Corner: two simultaneous rail constraints, no hidden ball-ball contacts.
+ for(0..2)|corner|{
+  var f=try F.open(debug);defer f.close();try f.material(0,0,0,0,0,0);var a=try f.state();
+  a[0][0]=if(corner==0)radius else @as(f32,@floatCast(c.POOL_TABLE_WIDTH))-radius;
+  a[0][1]=if(corner==0)radius else @as(f32,@floatCast(c.POOL_TABLE_HEIGHT))-radius;
+  a[0][2]=if(corner==0)-0.01 else 0.01;a[0][3]=a[0][2];a[0][13]=@bitCast(@as(u32,0));a[0][14]=@bitCast(@as(u32,1));try f.input(a);
+  const q=try f.step();if(q.contacts!=2)return error.CornerCoverage;
+  for(0..32)|_|{_=try f.step();}a=try f.state();if(a[0][2]!=0 or a[0][3]!=0 or @as(u32,@bitCast(a[0][14]))!=0)return error.RailRest;
+  // Existing command path must reawaken a settled rail contact.
+  try f.cmd(.{if(corner==0)0.3 else -0.3,0});const wake=try f.step();if(wake.woken==0)return error.RailWake;
+ }
+ {
+  var f=try F.open(debug);defer f.close();try f.material(1,1,0,0,0,0);var a=try f.state();
+  for(&a,0..)|*b,i|{b[0]=0.15+@as(f32,@floatFromInt(i))*0.14;b[1]=0.9;b[2]=0;b[3]=0;b[5]=0;}
+  a[0][0]=0.1;a[0][1]=0.3;a[0][2]= -2;a[0][13]=@bitCast(@as(u32,0));a[0][14]=@bitCast(@as(u32,1));try f.input(a);
+  const initial=try f.totalEnergy();var impacts:u32=0;
+  for(0..700)|_|{const q=try f.step();if(q.contacts!=0)impacts+=1;if(try f.totalEnergy()>initial+1e-6)return error.RepeatedRailEnergy;}
+  if(impacts<4)return error.RepeatedRailCoverage;
+  std.debug.print("PASS repeated rails: impacts={d} ticks=700\n",.{impacts});
+ }
+ std.debug.print("PASS rail geometry: {d} signed/magnitude cases; corners, persistent contacts, rest/wake\n",.{cases});
 }
