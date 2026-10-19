@@ -11,6 +11,10 @@ def main():
     results=json.loads((E/'diagnostic-results.json').read_text());build=json.loads((E/'diagnostic-build.json').read_text())
     control=json.loads((E/'control-provenance.json').read_text())
     assert build['normal_shaders']==control['shader_sha256'],'default diagnostics must compile out byte-for-byte'
+    formatting=json.loads((E/'format-rebuild.json').read_text())
+    assert formatting['all_85_default_and_5_diagnostic_outputs_identical']
+    for n,h in formatting['current_shader_source_sha256'].items():assert sha(R/n)==h,n
+    assert sha(E/'tested-shader-source/physics.hlsl')==formatting['tested_shader_source_sha256']['physics.hlsl']
     for n,h in build['source_sha256'].items():assert sha(R/n)==h,n
     assert sha(R/'zig-out/bin/physics.exe')==build['host_sha256']
     for n,h in build['normal_shaders'].items():

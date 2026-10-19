@@ -164,7 +164,7 @@ groupshared uint3 g4ContactStats[256];
 [numthreads(1,1,1)]void ph_pool_positions(){
  if(fixture!=13u||m.Load(0))return;double2 p[16],original[16];
  for(uint i=0;i<16;i++){float2 next=float2(val(i,0),val(i,1))+float2(val(i,2),val(i,3))*dt();p[i]=double2(next);original[i]=p[i];}
- 
+
 #if G6_POOL_FAILURE_DIAGNOSTICS
  double diagnosticMax=0;uint diagnosticA=NONE,diagnosticB=NONE;
 #endif
