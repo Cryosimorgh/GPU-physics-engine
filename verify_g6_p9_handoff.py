@@ -44,7 +44,7 @@ def verify(target):
     diag=json.loads(read('evidence/g6-p9/isolation/result.json'))
     assert diag['status']=='LOCALIZED' and diag['same_input'] and diag['same_contact_set']
     states=[];inputs=[];contacts=[];assignments=[]
-    header=read('source/physics-layout.h').decode()
+    header=read('source/physics-layout.h').decode().replace('\r\n','\n')
     for repeat in range(2):
         prefix=f'evidence/g6-p9/isolation/trace-{repeat}.json'
         payload=json.loads(read(prefix));cap=payload['capacity'];n=payload['n']
