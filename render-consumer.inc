@@ -26,7 +26,9 @@ static int vconsumer_prepare(Viewer *v,VFrame *f){
  if(!ph_work_info(v->p,&f->consumer,&f->consumer_info)){ph_work_cancel(v->p,&f->consumer);memset(&f->consumer,0,sizeof(f->consumer));return 0;}
  f->generation=f->consumer_info.generation;
  uint32_t next=ph_next_tick(v->p);if(f->generation>next){ph_work_cancel(v->p,&f->consumer);memset(&f->consumer,0,sizeof(f->consumer));return 0;}
- f->snapshot_age=next-f->generation;return 1;
+ f->snapshot_age=next-f->generation;
+ // Exact generation lookup; zero is explicitly unknown, never a current-tick substitute.
+ unsigned clock=f->generation%8;f->image_simulation_qpc=v->publication_clock[clock].generation==f->generation?v->publication_clock[clock].qpc:0;return 1;
 }
 static int vconsumer_submit(Viewer *v,VFrame *f,uint64_t fence){
  if(G6_RENDER_LEGACY_CONTROL)return SUCCEEDED(gp_queue_wait(&v->d->g,v->graphics_queue,v->d->g.fence,f->cf));

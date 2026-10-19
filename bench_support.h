@@ -5,6 +5,8 @@ typedef struct BenchRecord {
  uint32_t n,profile,depth,vsync,generation,epoch,simulated,rendered,active,contacts,islands,largest,errors,rejected,convergence,backlog,age;
  uint64_t candidates;
  double physics_ms,render_ms,record_ms,submit_ms,present_ms,frame_ms,completion_ms,camera_x,camera_y,zoom,speed;
+ uint64_t swap_chain,submit_qpc,snapshot_start_qpc,graphics_fence,allocations,releases;
+ uint32_t present_id,present_result,back_buffer,nonblocking;double acceptance_wait_ms;
  uint32_t impulse_entity,impulse_generation,impulse_serial;float impulse_x,impulse_y;char event[64];
 } BenchRecord;
 int bench_log_start(const char *directory,int automated);

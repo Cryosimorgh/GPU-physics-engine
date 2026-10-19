@@ -18,7 +18,15 @@ const Session=struct{
   const v=c.viewer_open(d,&b.handles,p,&cfg) orelse return error.ViewerAdmission;errdefer c.viewer_close(v);
   const self=try a.create(Session);self.*=.{.d=d,.b=b,.p=p,.v=v,.cfg=cfg};return self;
  }
- fn close(self:*Session)void{c.viewer_close(self.v);c.ph_close(self.p);self.b.deinit();var m:c.Memory=undefined;if(c.s_memory(self.d,&m)==0 or m.committed!=m.context_committed or c.s_retired_bytes(self.d)!=0 or c.s_errors(self.d)!=0)std.process.exit(4);c.s_close(self.d);a.destroy(self);}
+ fn close(self:*Session)void{
+  if(self.cfg.self_test==41 and c.s_device_state(self.d)==c.S_CONTEXT_REMOVED){
+   var view:?*c.Viewer=self.v;var physics:?*c.Physics=self.p;var device:?*c.StorageDevice=self.d;
+   if(c.viewer_try_close(&view,1000)==0 or c.ph_teardown(&physics)==0)std.process.exit(4);
+   self.b.deinit();var memory:c.Memory=undefined;
+   if(c.s_memory(self.d,&memory)==0 or memory.committed!=memory.context_committed or c.s_retired_bytes(self.d)!=0 or c.s_errors(self.d)!=0 or c.s_try_close(&device,1000)==0)std.process.exit(4);
+   c.bench_log_event("CONTROLLED_REMOVAL_TEARDOWN_PASS",self.cfg.n,self.cfg.profile);a.destroy(self);return;
+  }
+c.viewer_close(self.v);c.ph_close(self.p);self.b.deinit();var m:c.Memory=undefined;if(c.s_memory(self.d,&m)==0 or m.committed!=m.context_committed or c.s_retired_bytes(self.d)!=0 or c.s_errors(self.d)!=0)std.process.exit(4);c.s_close(self.d);a.destroy(self);}
 };
 pub fn main()!void{
  const args=try std.process.argsAlloc(a);defer std.process.argsFree(a,args);
@@ -34,7 +42,7 @@ pub fn main()!void{
  var memory:c.Memory=undefined;try ck(c.s_memory(current.d,&memory));
  const hw=try std.json.Stringify.valueAlloc(a,.{.adapter=std.mem.span(c.s_name(current.d)),.driver_version=c.s_driver(current.d),.n=cfg.n,.profile=cfg.profile,.depth=cfg.depth,.dt=1.0/128.0,.automated=automated,.memory=memory,.cpu_target="x86_64 baseline",.displayed_fps_status="UNVERIFIED",.scene="Playable Billiards (16 stationary balls), or explicitly synthetic scientific stress fixtures",.telemetry_queue_capacity=2048,.rolling_sample_capacity=4096},.{.whitespace=.indent_2});defer a.free(hw);
  const hp=try std.fmt.allocPrint(a,"{s}/hardware.json",.{std.mem.span(c.bench_log_directory())});defer a.free(hp);try std.fs.cwd().writeFile(.{.sub_path=hp,.data=hw});std.debug.print("GPU Physics Playground: results {s}\n",.{std.mem.span(c.bench_log_directory())});
- var sessions:u32=1;var ticks:u64=0;while(true){const result=c.viewer_run(current.v);if(result==0)return error.Viewer;if(result==1)break;
+ var sessions:u32=1;var ticks:u64=0;while(true){const result=c.viewer_run(current.v);if(result==0){if(current.cfg.self_test==41 and c.s_device_state(current.d)==c.S_CONTEXT_REMOVED){c.bench_log_event("EXPECTED_DEVICE_REMOVAL_STOP",current.cfg.n,current.cfg.profile);return;}return error.Viewer;}if(result==1)break;
   var requested:c.ViewerConfig=undefined;try ck(c.viewer_request(current.v,&requested));if(requested.source_epoch==0)return error.EpochOverflow;
   var before_hash:[32]u8=undefined;var before_memory:c.Memory=undefined;
   const verify_rejection=current.cfg.self_test==20 and requested.budget==1;
