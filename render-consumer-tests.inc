@@ -27,8 +27,8 @@ fail:viewer_close(v);ph_close(p);return NULL;
 }
 static int vheadless_start(Viewer *v,uint32_t seq,int simulate){
  VFrame *f=&v->frames[seq%v->cfg.depth];RCHECK(vfinish(v,f));
- f->sequence=seq;f->tick=ph_next_tick(v->p);f->generation=f->tick+(simulate?1:0);f->simulate=simulate;f->submit_start=s_clock();f->result=(PhysicsResult){0};f->gf=0;f->record_us=f->submit_us=0;
- if(simulate){RCHECK(vbegin_physics(v,f)&&ph_record_frame(v->p,f->tick,&f->result,f->header,f->snapshot));f->physics=v->d->slot;f->cf=s_fence(v->d);}else f->cf=s_fence(v->d);
+ f->sequence=seq;f->tick=ph_next_tick(v->p);f->generation=f->tick+(simulate?1:0);f->simulate=simulate;f->has_user=v->cfg.profile==13&&simulate;f->submit_start=s_clock();f->result=(PhysicsResult){0};f->gf=0;f->record_us=f->submit_us=0;
+ if(simulate){RCHECK(vbegin_physics(v,f)&&vrecord_physics(v,f));f->physics=v->d->slot;f->cf=s_fence(v->d);}else f->cf=s_fence(v->d);
  RCHECK(vrender(v,f));f->pending=1;v->submitted=seq+1;return 1;
 }
 static int vheadless_proof(Viewer *v,VFrame *f){
@@ -45,7 +45,9 @@ static int vheadless_poison(Viewer *v,const uint64_t *base){
  uint64_t upload=s_new(v->d,12,1,"Test-only private buffer poison");RCHECK(upload);uint32_t *data=s_map(v->d,upload,0);RCHECK(data);data[0]=0x7fc00000u;data[1]=UINT32_MAX;data[2]=0;
  RCHECK(s_unmap(v->d,upload,12)&&s_begin(v->d)&&s_transition(v->d,base[0],2)&&s_transition(v->d,base[1],2)&&s_copy_offset(v->d,base[0],0,upload,0,4)&&s_copy_offset(v->d,base[1],0,upload,4,8)&&s_transition(v->d,base[0],0)&&s_transition(v->d,base[1],0)&&s_submit(v->d,0)&&s_wait(v->d)&&s_retire(v->d,upload)&&ph_inject(v->p,3));s_collect(v->d);return 1;
 }
+#include "nonblocking-consumer-tests.inc"
 int viewer_consumer_test(StorageDevice *d,const uint64_t *base,uint32_t profile,uint32_t samples,const char *path){
+ if(!samples&&profile==9)return vnonblocking_test(d,base,path);
  Memory initial,memory,final;RCHECK(s_memory(d,&initial));Viewer *v=vheadless_open(d,base,profile,samples?2:1);RCHECK(v);Physics *p=v->p;
  if(!samples){
   RCHECK(!G6_RENDER_LEGACY_CONTROL&&profile==13&&vheadless_gate(v));
@@ -66,18 +68,20 @@ int viewer_consumer_test(StorageDevice *d,const uint64_t *base,uint32_t profile,
    RCHECK(SUCCEEDED(ID3D12Fence_Signal(v->test_delay,1))&&vheadless_proof(v,f)&&f->consumer_terminal==(fail?PH_WORK_FAILED:PH_WORK_CANCELLED)&&vfinish(v,f));
   }
   // The poisoned producer must fail validation; its accepted snapshot survives.
-  v->cfg.mode=2;f->sequence=4;f->tick=ph_next_tick(p);f->result=(PhysicsResult){0};RCHECK(vbegin_physics(v,f)&&ph_record_frame(p,f->tick,&f->result,f->header,0));f->physics=d->slot;f->cf=s_fence(d);v->cfg.interactive=3;f->simulate=1;RCHECK(!vrender(v,f)&&!f->consumer.id&&f->rejection_reported);v->cfg.interactive=0;
+  v->cfg.mode=2;f->sequence=4;f->tick=ph_next_tick(p);f->result=(PhysicsResult){0};RCHECK(vbegin_physics(v,f)&&ph_record_frame(p,f->tick,&f->result,f->header,0));f->physics=d->slot;f->cf=s_fence(d);v->cfg.interactive=3;f->simulate=1;f->has_user=1;RCHECK(!vrender(v,f)&&!f->consumer.id&&f->rejection_reported);v->cfg.interactive=0;
   v->cfg.mode=1;RCHECK(vheadless_start(v,4,0)&&vheadless_proof(v,f)&&vfinish(v,f)&&v->last.render[3]==2);
   fprintf(stderr,"PASS delayed renderer, real producer overlap, slot backpressure, reuse, cancellation, failure cleanup and rejected-state withholding\n");
  }
- double gpu[32]={0},render[32]={0},cpu[32]={0},wait[32]={0};uint64_t vertex_count=0;
+ double gpu[32]={0},render[32]={0},cpu[32]={0},wait[32]={0},age[32]={0},retire[32]={0},handoff[32]={0};uint64_t vertex_count=0;
  for(unsigned i=0;i<samples+4&&samples;i++){
-  RCHECK(vheadless_start(v,i,1));VFrame *f=&v->frames[i%v->cfg.depth];RCHECK(vheadless_proof(v,f)&&vfinish(v,f)&&v->last.render[1]==16&&v->last.render[8]==0&&v->last.render[9]==15);vertex_count+=99;
-  if(i>=4){gpu[i-4]=v->last.physics.gpu_us[39];render[i-4]=v->last.render_us;cpu[i-4]=v->last.physics.cpu_us+f->record_us+f->submit_us;wait[i-4]=f->acceptance_wait_us;}
+  double handoff_start=s_clock();RCHECK(vheadless_start(v,i,1));double handoff_us=s_clock()-handoff_start;VFrame *f=&v->frames[i%v->cfg.depth];RCHECK(vheadless_proof(v,f)&&vfinish(v,f)&&v->last.render[1]==16&&v->last.render[8]==0&&v->last.render[9]==15);vertex_count+=99;
+  if(i>=4){gpu[i-4]=v->last.physics.gpu_us[39];render[i-4]=v->last.render_us;cpu[i-4]=v->last.physics.cpu_us+f->record_us+f->submit_us;wait[i-4]=f->handoff_wait_us;age[i-4]=f->snapshot_age;handoff[i-4]=handoff_us;retire[i-4]=v->last.backpressure_us;}
  }
  RCHECK(s_memory(d,&memory)&&s_errors(d)==0);FILE *file=fopen(path,"w");RCHECK(file);
  fprintf(file,"{\"status\":\"PASS\",\"legacy_control\":%d,\"samples\":%u,\"profile\":%u,\"actual_vertex_invocations\":%llu,\"coverage_per_frame\":16,\"no_window\":true,\"no_present\":true,\"pixel_readback\":false,\"committed\":%llu,\"allocations\":%llu,\"managed_buffer_allocations\":%llu,\"native_target_allocations\":%u,\"validation_enabled\":%s,\"gpu_tick_us\":[",G6_RENDER_LEGACY_CONTROL,samples,profile,(unsigned long long)v->proven_vertices,(unsigned long long)memory.committed,(unsigned long long)(memory.allocations+v->cfg.depth),(unsigned long long)memory.allocations,v->cfg.depth,samples?"false":"true");
- for(unsigned i=0;i<samples;i++)fprintf(file,"%s%.9g",i?",":"",gpu[i]);fprintf(file,"],\"gpu_render_us\":[");for(unsigned i=0;i<samples;i++)fprintf(file,"%s%.9g",i?",":"",render[i]);fprintf(file,"],\"cpu_record_submit_us\":[");for(unsigned i=0;i<samples;i++)fprintf(file,"%s%.9g",i?",":"",cpu[i]);fprintf(file,"],\"acceptance_wait_us\":[");for(unsigned i=0;i<samples;i++)fprintf(file,"%s%.9g",i?",":"",wait[i]);fprintf(file,"]}");RCHECK(fclose(file)==0);
+ for(unsigned i=0;i<samples;i++)fprintf(file,"%s%.9g",i?",":"",gpu[i]);fprintf(file,"],\"gpu_render_us\":[");for(unsigned i=0;i<samples;i++)fprintf(file,"%s%.9g",i?",":"",render[i]);fprintf(file,"],\"cpu_record_submit_us\":[");for(unsigned i=0;i<samples;i++)fprintf(file,"%s%.9g",i?",":"",cpu[i]);fprintf(file,"],\"acceptance_wait_us\":[");for(unsigned i=0;i<samples;i++)fprintf(file,"%s%.9g",i?",":"",wait[i]);fprintf(file,"],\"snapshot_age_ticks\":[");for(unsigned i=0;i<samples;i++)fprintf(file,"%s%.9g",i?",":"",age[i]);
+ fprintf(file,"],\"retirement_blocking_us\":[");for(unsigned i=0;i<samples;i++)fprintf(file,"%s%.9g",i?",":"",retire[i]);
+ fprintf(file,"],\"cpu_handoff_us\":[");for(unsigned i=0;i<samples;i++)fprintf(file,"%s%.9g",i?",":"",handoff[i]);fprintf(file,"]}");RCHECK(fclose(file)==0);
  viewer_close(v);ph_close(p);RCHECK(s_memory(d,&final)&&final.committed==initial.committed&&s_retired_bytes(d)==0&&s_errors(d)==0);
  fprintf(stderr,"PASS real application render consumer: %u measured frames, 16 objects per frame, no GUI or image readback\n",samples);return 1;
 }

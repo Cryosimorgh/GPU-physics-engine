@@ -4,7 +4,7 @@
 **Record date:** 2026-10-19
 **Document type:** Living engineering record  
 **Style:** Clear technical English, based on ASD-STE100 principles without strict controlled-language limits  
-**Status:** Experimental GPU physics engine. G5 is **DEFERRED / NOT QUALIFIED**. G6-P1/P2/P3 are preparation only; G6 and production release are **not qualified**.
+**Status:** Experimental GPU physics engine. G5 is **DEFERRED / NOT QUALIFIED**. G6-P1/P2/P3/P4 are preparation only; G6 and production release are **not qualified**.
 
 > **Update rule:** Update this document in the same change that closes, rejects, or reopens a development breakpoint. Keep prior results and their limitations. Do not turn a local experiment into a released feature by changing its status here.
 
@@ -688,6 +688,50 @@ Physical removal/recreation is **UNVERIFIED**. On device loss, stop new submissi
 
 Normal renderer code is integrated, but interactive presentation, networking consumers, sustained broad workloads and actual device-loss recovery remain unqualified. Next: test the explicit removed-device teardown boundary before formal G6; keep G5 deferred.
 
+## G6-P4 decision: deferred consumption on existing frame ownership (2026-10-19)
+
+**LOCAL PREPARATION PASS; performance tradeoff recorded. G5 remains DEFERRED / NOT QUALIFIED. G6 remains NOT QUALIFIED.** This removes ordinary render submission's current-tick acceptance wait. No physics source, shader output, equations, solver policy, KKT criterion, timestep or rollback rule changed.
+
+### Dependency audit and minimal change
+
+The P1 accepted slot already remains valid while another slot is pending. `ph_state_acquire()` only leases an accepted slot whose readiness fence completed; `state_complete()` alone advances that pointer after completed-header validation. P2 `ph_work_prepare()` already acquires this accepted generation even while a producer is pending. Therefore the current-tick `vaccept_physics()` call at the start of P3 `vrender()` is not a dependency of an ordinary draw. It was a dependency only if the draw had to show that exact tick.
+
+`vrender()` now leases the last accepted generation and uses that lease's generation, tick, maps and immutable buffers throughout recording. Required producer-readiness queue waits, dependency registration before execution and completion-bound leases are unchanged. Validation/promotion of the pending tick is deferred to existing `vfinish()` retirement. A rejected tick may complete while an older accepted image is displayed; its own state is never rendered or promoted. Rejection still stops simulation and preserves the accepted snapshot. `vconsumer_prepare()` records snapshot age as `ph_next_tick() - leased_generation` and fails closed on a future generation.
+
+`vbegin_physics()` opportunistically retires older frame slots only when both existing queue fences are ready, in submission order. `vrecord_physics()` handles publication-slot exhaustion through at most the existing frame depth's retirements/retries, then fails explicitly. It does not create a queue, task allocator or scheduler. Delayed GPU consumers retain ownership; no consumer is discarded to make space. Normal renderer and interactive submission sites use this same helper.
+
+Command-bearing frames deliberately retain the P3 matching-tick acceptance path: `p_complete()` currently uses that draw's exported command-status word for shot acknowledgement. Using an older word could mislabel a committed or blocked shot. Removing this remaining command-frame wait requires separating that acknowledgement dependency and is outside this minimal change. Render-only and ordinary physics frames do not need it. Physics impact events now identify the validated simulation generation, rather than labeling them with the older rendered generation. The stale `work-ownership.h` comment now states the implemented limit of five extra resources.
+
+### Bounded actual-GPU verification
+
+Reproduce with `python run_g6_p4.py`. The script builds/reuses verified artifacts, runs GPU cases sequentially with 60-second process timeouts, and saves complete logs/JSON/CSV. Final evidence has eleven passing test records: six final process runs and five passing tests reused only after exact executable hash and invocation checks. The first attempt's failed P3 harness assumption is archived under `harness-contract-failure`: that case did not identify itself as command-bearing while expecting synchronous rejection. It now explicitly tests command acknowledgement; the separate P4 test covers deferred rejection. No physics correctness criteria were changed.
+
+The real renderer completes two actual offscreen GPU draws while the physics queue is held behind an unsignaled native fence. Both read the accepted generation, with ages one and two ticks; neither needs the pending tick's readiness fence. The same test verifies full 16-body coverage, stale task/lease rejection, generation reuse, all 64 leases exhausted without allocation growth, capacity rejection without tick advancement, rejected-state withholding, continued rendering of the accepted state, delayed cancellation and complete cleanup. It records 495 vertex invocations and zero debug errors. The retained P3 consumer test adds 495 actual vertex invocations, poisoned private-buffer isolation, prepared cancellation and submitted failure cleanup. Publication/ownership plus pool idle, collision and energy regressions pass on unchanged binaries. No window, Present, pixel readback or screenshot is used.
+
+`evidence/g6-p4/results.json`, `results.csv`, `nonblocking.json`, `consumer-lifecycle.json`, `gate-G6-P4.json` and full logs are the evidence. All recorded original P3 file hashes and dirty status remain unchanged. Every DXIL output and physics source matches that original working tree.
+
+### Matched measurements and limitations
+
+Both arms use the same fixture, shaders, existing D3D12 renderer and common headless telemetry. `G6_P3_BLOCKING_CONTROL=1` selects the P3 current-tick wait and disables the new retirement/retry policy; it is a matched blocking-policy control, not the archived byte-identical P3 executable. Two AB/BA process pairs provide 32 timed frames per arm after warmup, with a real draw and full identity verification each frame.
+
+| Metric | Matched P3 p50 / p95 | P4 p50 / p95 |
+|---|---:|---:|
+| CPU pre-submit acceptance wait, us | 366.5 / 583.7 | 0 / 0 |
+| CPU record + submit, us | 363.5 / 628.1 | 341.1 / 560.4 |
+| CPU complete handoff call, us | 751.3 / 1028.1 | 347.0 / 565.2 |
+| Complete physics GPU tick interval, us | 602.5 / 801.75 | 786.5 / 873.75 |
+| GPU render interval, us | 16.384 / 16.448 | 22.528 / 25.6 |
+| Snapshot age at submission, ticks | 0 / 0 | 1 / 1 |
+| Inclusive CPU frame blocking, us | 366.6 / 584.0 | 431.7 / 658.6 |
+| Committed bytes | 2,686,976 | 2,686,976 |
+| Runtime buffers + native target allocations | 37 + 2 | 37 + 2 |
+
+The existing raw field named `retirement_blocking_us` is the inclusive frame backpressure quantity, including any earlier acceptance wait. The table labels its actual meaning; do not treat it as a measurement of pure late-retirement wait. Complete handoff wall time includes validation/recording/submission work; record-plus-submit excludes acceptance blocking. Completion waits still occur at frame reuse, drain and bounded resource pressure. Removing submission blocking does not remove GPU completion cost.
+
+P4 improves CPU handoff latency in these samples but has larger measured GPU intervals and an older image. Concurrent queue activity can extend timestamp intervals; this batch does not prove that as the cause or establish a total-throughput improvement. Do not replace the matched 366.5-us control with P3's historical 1.13-ms sample: these are separate local runs with different timing distributions. The earlier P1/P2 break attribution discrepancy remains unresolved and is not used for performance claims.
+
+The change adds bounded host metadata only, no GPU buffers or copies. One tick of normal measured snapshot age is 7.8125 ms of simulation time at the unchanged 128-Hz tick, not measured display latency. The gated test demonstrates two ticks; this is not a universal presentation-latency bound. Interactive display, broad sustained workloads, hardware submission faults and physical device removal/recreation remain UNVERIFIED. P3's fail-stop teardown requirements remain in force. Next: the separately scoped removed-device ownership teardown/recovery qualification, without resuming G5.
+
 ## 13. Verification and low-cost test workflow
 
 **Code:** `physics_verify.c`, `physics_tests.c`, `tests.zig`; on the playable branch `dev_test.py`, `test_dev_workflow.py`, and the billiards test scripts.
@@ -740,7 +784,7 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
 | **G5** | Large islands, convergence, robust solver performance | **DEFERRED / NOT QUALIFIED** | Bounded Anderson acceleration reduced work on several fixtures but lost convergence in eight previously converging configurations. Rejected; exact retained solver and all production defaults preserved. |
-| **G6** | Reproduce all gates, approve an engine foundation | **NOT QUALIFIED; G6-P1/P2/P3 preparation only** | G5 deferred. Local publication tests do not qualify G6 or approve an engine foundation. |
+| **G6** | Reproduce all gates, approve an engine foundation | **NOT QUALIFIED; G6-P1/P2/P3/P4 preparation only** | G5 deferred. Local publication tests do not qualify G6 or approve an engine foundation. |
 
 ### Current G5 decision (2026-10-18)
 
@@ -861,7 +905,7 @@ The 1,024-body attempted complete tick was 193.555→178.800 ms, schedule bracke
 
 ## 16. Risks and work still required
 
-1. **State isolation follow-up:** The existing renderer now uses the G6-P3 task/lease integration. Qualify device-loss teardown/recovery and sustained ownership under broader workloads before formal G6.
+1. **State isolation follow-up:** The existing renderer uses the G6-P3 task/lease integration and G6-P4 deferred consumption. Qualify device-loss teardown/recovery and sustained ownership under broader workloads before formal G6.
 2. **General island convergence:** Residual-gated policy 4 passes the limited quick sweep and avoids unnecessary restarts in branching/oblique cases. It remains opt-in and unqualified for sustained/general workloads; preserve KKT limits and rollback.
 3. **Large-island parallelism:** The 1,024-body global-memory solver takes roughly 167.5 ms on the present policy-4 sample. A cache variant reduced this but hurt aggregate throughput; real DRAM stalls and FP64 utilization remain unverified. Profile per-iteration cost before any multi-workgroup rewrite.
 4. **Scheduler scope:** A reusable resource monitor and dependency scheduler are design goals, not completed general-purpose services.
@@ -906,6 +950,7 @@ Next action:
 
 | Date | Breakpoint | Record update |
 |---|---|---|
+| 2026-10-19 | G6-P4 deferred GPU consumption - LOCAL PREPARATION PASS | Accepted snapshots render while a newer producer is pending; command acknowledgements retain matching-tick acceptance. Eleven final test records pass (five reused unchanged binaries). CPU handoff improves; GPU intervals increase; no allocation growth or throughput claim. G5 deferred, G6 unqualified, physical device loss separate. |
 | 2026-10-19 | G6-P3 actual GPU render consumer - LOCAL PREPARATION PASS | Existing renderer reads accepted immutable generations through P2 tasks and native queue/fence ownership. Fourteen serialized headless process runs pass; 192 KiB and three allocations saved. Pre-submit acceptance wait is explicit; no performance gain claimed. G5 deferred; G6 and physical device-loss recovery unqualified. |
 | 2026-10-19 | G6-P2 resource/task ownership — LOCAL PREPARATION PASS | Reused fixed-pass queues and lease storage; added explicit dependencies, resource conflicts and non-preemptive fence-safe cancellation. Twenty-two headless process runs pass; zero extra GPU allocations/committed bytes. Break excluded from performance claims; G5 deferred and G6 not qualified. |
 | 2026-10-19 | G6-P1 consumer generation isolation — LOCAL PREPARATION PASS | Added bounded immutable GPU snapshots, completion-bound leases, explicit backpressure and failure ownership. Twenty-one headless process runs pass; paired costs recorded. G5 DEFERRED / NOT QUALIFIED; G6 NOT QUALIFIED; device loss remains unverified. |
