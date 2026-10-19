@@ -3,6 +3,8 @@
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
+#include "publication-tests.inc"
+#include "ownership-tests.inc"
 #define REQUIRE(x) do{if(!(x)){fprintf(stderr,"G3 device test line %d\n",__LINE__);return 0;}}while(0)
 int ph_device_tests(StorageDevice *d,const uint64_t *base){
  PhysicsConfig c={32,32,64,64,1,2,4096,20,4096,8388608,1,UINT32_MAX,1.f/128,0};

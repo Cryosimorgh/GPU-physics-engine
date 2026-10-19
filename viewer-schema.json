@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "hud_pixel_stride": 8,
   "hud_pixel_capacity": 16384,
   "camera": [
@@ -93,7 +93,7 @@
     ],
     [
       "uint",
-      "unused22"
+      "poolCommandByte"
     ],
     [
       "uint",

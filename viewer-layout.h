@@ -1,7 +1,7 @@
-// Generated viewer ABI SHA256 d94002db158c8103c59416988312cff095e8527bb603be0b989f0a7a659c37b1
+// Generated viewer ABI SHA256 4403209516cf98400b0a845de48baaf6b6bc3686745cfd493b456cf1aff5a68c
 #ifndef G4_VIEWER_LAYOUT_H
 #define G4_VIEWER_LAYOUT_H
-#define G4_V_VERSION 2u
+#define G4_V_VERSION 3u
 #define G4_V_CAMERA_WORDS 32u
 #define G4_V_HUD_PIXEL_STRIDE 8u
 #define G4_V_HUD_PIXELS 16384u
@@ -27,7 +27,7 @@
 #define G4_V_PICKX 19u
 #define G4_V_PICKY 20u
 #define G4_V_SELECTEDID 21u
-#define G4_V_UNUSED22 22u
+#define G4_V_POOLCOMMANDBYTE 22u
 #define G4_V_UNUSED23 23u
 #define G4_V_UNUSED24 24u
 #define G4_V_UNUSED25 25u

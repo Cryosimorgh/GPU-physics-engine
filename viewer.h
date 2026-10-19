@@ -19,3 +19,5 @@ int viewer_request(Viewer*,ViewerConfig*);
 void viewer_rejected(Viewer*);
 void viewer_hide(Viewer*);
 uint64_t viewer_live_ticks(Viewer*);
+
+int viewer_consumer_test(StorageDevice*,const uint64_t*,uint32_t,uint32_t,const char*);

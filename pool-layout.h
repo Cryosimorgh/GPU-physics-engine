@@ -1,4 +1,4 @@
-// Generated pool contract SHA256 381b745fd42272bc01bd97d5117e2f65f957b67470defe3593448f314095a11d
+// Generated pool contract SHA256 f14d18e133287cca29bba73dabffdf046bf9d1e59523023090085cf7ddf01165
 #ifndef POOL_LAYOUT_H
 #define POOL_LAYOUT_H
 #define POOL_VERSION 1u
@@ -29,6 +29,9 @@
 #define POOL_POSITION_Y_OFFSET 384u
 #define POOL_GUARD_OFFSET 512u
 #define POOL_DIAGNOSTIC_OFFSET 292u
+#define POOL_SNAPSHOT_PERSISTENT_BYTES 160u
+#define POOL_SNAPSHOT_COMMAND_OFFSET 160u
+#define POOL_SNAPSHOT_BYTES 164u
 #define POOL_DATA(meta_guard) ((meta_guard)+256u)
 #define POOL_ROLL(base,field,id) ((base)+POOL_CONFIG_BYTES+64u*(field)+4u*(id))
 #endif

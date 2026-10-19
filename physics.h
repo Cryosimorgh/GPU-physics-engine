@@ -51,3 +51,6 @@ int ph_user_command(Physics*,uint64_t);
 
 int ph_pool_material(Physics*,const float *eight_values);
 int ph_pool_rolling(Physics*,const float *x_then_y_16_each);
+
+#include "state-publication.h"
+#include "work-ownership.h"

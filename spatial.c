@@ -115,3 +115,5 @@ int sp_ledger(Spatial *s,const char *path){FILE *f=fopen(path,"w");if(!f)return 
 int sp_g4_occupancy(Spatial *s){return dispatch(s,79,s->design?s->T:s->n);}
 
 int sp_g4_cell_mode(Spatial *s,uint32_t mode){if(mode>1||s_completed(s->d)<s_fence(s->d))return 0;s->physics_policy=(s->physics_policy&~G4_FINE_CELL_FLAG)|(mode?G4_FINE_CELL_FLAG:0);return 1;}
+
+uint32_t sp_resources(Spatial *s,uint64_t *out,uint32_t cap){uint32_t n=0;if(!s||!out)return 0;for(unsigned i=0;i<13;i++){uint64_t h=i<8?s->h[i]:s->owned[i-8];if(!h)continue;unsigned j=0;for(;j<n;j++)if(out[j]==h)break;if(j<n)continue;if(n==cap)return 0;out[n++]=h;}return n;}
