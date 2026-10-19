@@ -438,6 +438,31 @@ The **1,024-body solver stage** changed from **163.33 to 153.93 ms**. The retain
 
 **Evidence:** User-uploaded `G5-Skip-Overwritten-Residual-20261018.zip`, including `source/projected_solver.hlsl`, `baseline/projected_solver.hlsl`, `change.patch`, `evidence/results.json`, `results.csv`, full per-run exports and residual traces, compiled DXIL listings, Windows unit logs, retained-build provenance, and workspace-preservation record. Archive integrity, diff scope, summary data, and available SHA-256 values were checked offline. These are local Windows recordings, **not GitHub CI or an independently rerun GPU qualification**.
 
+### G5 early residual restart — REJECT (2026-10-19)
+
+**Hypothesis:** The residual-gated policy 4 restarts a hard connected island at iteration 512, after using one eighth of its 4,096-iteration budget. A restart might save solver work if the current relaxation has failed to contract the residual. A new **opt-in policy-4-only** check restarts at an earlier complete 64-iteration window after **two consecutive poor-contraction windows** (contraction at least 0.8), once relaxation is above 1 and the settling period has ended. A fast-contraction window resets the evidence. The original iteration-512 checkpoint remains as a fallback; no topology name or body-count rule was used.
+
+**Physics contract:** The experiment preserved the contact equations, normal/tangent impulse projection, FP64 computations, original work and iteration limits, residual/KKT and energy/momentum checks, and rollback. The earlier retained `G5_REUSE_MEASURE_BODIES=1` and `G5_SKIP_OVERWRITTEN_RESIDUAL=1` options remained enabled. No solver policy other than policy 4 was changed. The trace reader gained strict verification of early restart timing and settled poor-residual windows.
+
+**Evidence audit:** The local Windows handoff `G5-Early-Restart-Rejected-20261019.zip` includes 200 serialized, cold single-tick timing runs across ten configurations, five policies, two arms and two samples per arm. It also includes 40 independently instrumented trace trials. **Each arm accepted 90/100 timed trials and rejected 10/100** (six expected PGS rejections and four expected original-adaptive-policy rejections). All **180** accepted trials reported passing invariant checks; all **20** rejected attempts reported verified rollback. All 40 trace trials converged, and the handoff reports **37 passing headless unit tests**. The **50 JSON summary medians** were independently recomputed from the raw runs and checked against the saved CSV, with no mismatches. This is recorded Windows GPU evidence; the D3D12 tests were not repeated during this review.
+
+**Trace findings:** Policy 4 restarted only the 256- and 1,024-body chains in the traced set. In both, restart moved **512 → 256** iterations. Policy-4 trace restart counts stayed at **two per arm** across ten fixtures, while policy-3 remained at **four per arm**. The 1,024-body chain fell from about **4,025 to 3,769** solver iterations. Counts from instrumented traces are **not per-timing-trial measurements**. No 64-body chain or dense/oblique fixture triggered an early policy-4 restart in the reviewed traces.
+
+| Policy-4 workload, one connected island | Retained control GPU p50 | Early-restart GPU p50 | Outcome |
+|---|---:|---:|---|
+| Chain, 64 bodies | 2.35 ms | 2.35 ms | No early restart |
+| Chain, 256 bodies | 32.74 ms | **30.91 ms** | 4,035 → 3,779 iterations |
+| Chain, 1,024 bodies | 150.31 ms | **147.05 ms** | 4,025/4,024 → 3,768/3,770 iterations |
+| Dense, 64 bodies | **1.86 ms** | 2.05 ms | Slower without restart |
+| Dense, 256 bodies | **9.70 ms** | 10.15 ms | Slower without restart |
+| Oblique/friction, 256 bodies | **28.79 ms** | 32.65 ms | Slower without restart |
+
+**Performance decision:** The unchanged four-part retention rule requires **both** the geometric mean and summed complete-tick GPU p50 to improve for (1) all ten policy-4 fixtures and (2) all 45 previously accepted policy configurations. Policy-4 geometric-mean ratio was **1.0097496** (0.97% worse) and sum ratio **0.9944305** (0.56% better): the candidate **failed**. Across all accepted configurations, geometric-mean/sum ratios were **0.9929693 / 0.9938164**, but they cannot override the failed policy-4 criterion. Some fixtures with no change in restart behavior grew slower. With two cold trials and variable contact-color ordering, these timing differences cannot be attributed to the new condition with high confidence. Static DXIL instruction-site counts were unchanged for policy 4; no claim about DRAM, occupancy or hardware stall savings is justified.
+
+**Decision: REJECT; RESTORE PREVIOUS SOLVER.** The archive's retained `source/projected_solver.hlsl` has SHA-256 `10c5ee6541c7799119a9578b304c51f8d3de3938e2221613894bc7fae75d5c24`; its experimental `evidence/tested-projected_solver.hlsl` has SHA-256 `b57f6011133a647bf4c787913ed70a8be484923d27edd69a6c1e862ec10c449b`. The recorded restoration report confirms byte-for-byte rollback of the active shader, rebuilt policy-1 and policy-4 shader hashes matching controls, and preservation of the original workspace (388 checked files and dirty status unchanged). This architecture-document update does **not** publish experiment shader code. Keep the production policy-1 default and policy 4 opt-in. G5 remains **NOT QUALIFIED**.
+
+**Next decision:** Before another restart heuristic, isolate run-to-run contact coloring and GPU timing variation by comparing fixed-input traces and matched configuration controls. Quantify whether a smaller restart budget offers a repeatable net improvement across the existing ten fixtures **without** weakening correctness criteria. If the variation cannot be controlled, prefer a targeted solver-algorithm study over threshold tuning. Do not run a long or GUI-based campaign.
+
 ## 9. Global time, sleeping, and simulation state
 
 **Code:** `physics.c`, `physics.hlsl`, `viewer.c`.
@@ -559,24 +584,24 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G2** | Spatial search and contacts | **Passed in historical scoped tests** | Hash selected; contact construction verified. |
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
-| **G5** | Large islands, convergence, robust solver performance | **Local optimizations retained — NOT QUALIFIED** | Skip redundant pre-reconstruction residual: 200 matched runs, verified acceptance/rollback, 1,024-body policy-4 GPU p50 165.61→155.86 ms. Broad geometric-mean gain only 0.28%; production policy 1 unchanged. |
+| **G5** | Large islands, convergence, robust solver performance | **Local optimizations retained — NOT QUALIFIED** | Early-restart experiment rejected: 256/1,024-body chains improved but policy-4 geometric-mean GPU p50 worsened 0.97%. Baseline shader restored, policy 4 still opt-in, production remains policy 1. |
 | **G6** | Reproduce all gates, approve an engine foundation | **Not started / not authorized** | Requires G4/G5 closure and architecture proof. |
 
-### Current G5 decision (2026-10-18)
+### Current G5 decision (2026-10-19)
 
-**Finding:** The local G5 solver has two retained, narrow hot-loop changes: body-snapshot reuse during residual measurement, followed by a conditional skip of preliminary residual scans that a mandatory per-eight-iteration velocity reconstruction would overwrite. The latter was checked in one Windows headless 200-trial matched sweep. The 1,024-body policy-4 complete GPU tick fell from **165.61 to 155.86 ms**, with the solver from **163.33 to 153.93 ms** and no reduction from **4,026 iterations**. Source-level skips are not measured hardware stalls. The independently reconciled CSV and raw JSON show the same correctness outcomes and unchanged rollback behavior.
+**Finding:** The local solver retains body-snapshot reuse and skipping of preliminary residual scans overwritten by mandatory reconstructed-state checks. A later policy-4-only experiment tried moving hard-island restart from iteration 512 to 256 after two poor residual windows. It saved about 256 iterations on the 256- and 1,024-body compressive chains, and passed the recorded correctness and rollback checks. However, the ten-fixture policy-4 geometric mean became **0.97% worse** despite a 0.56% reduction in summed p50 GPU time; dense and oblique cases were slower, even though they did not take the early restart.
 
-**Decision: RETAIN LOCALLY UNDER SHORT-RUN RULE; G5 STILL OPEN.** The two required aggregate performance measures improved, but the broad geometric-mean gain was just **0.28%** over the 45 accepted-policy configurations, and branching-64 regressed. Two samples per configuration do not support tail-latency or sustained-speed claims. Keep the solver's retained macro defaults: `G5_REUSE_MEASURE_BODIES=1`, `G5_SKIP_OVERWRITTEN_RESIDUAL=1`, `G5_BODY_CACHE=0`, and production relaxation policy **1**. These changes are not yet merged as GitHub production shader code.
+**Decision: EARLY RESTART REJECTED; G5 STILL OPEN.** The predeclared four-part aggregate performance rule failed. The retained HLSL was restored byte-for-byte (SHA-256 `10c5ee6541c7799119a9578b304c51f8d3de3938e2221613894bc7fae75d5c24`). Keep `G5_REUSE_MEASURE_BODIES=1`, `G5_SKIP_OVERWRITTEN_RESIDUAL=1`, `G5_BODY_CACHE=0` and production relaxation policy **1**. Policy 4 remains opt-in, not production-qualified.
 
-**Next action:** Use existing residual traces and source/DXIL analysis to isolate high-impact cost in the **remaining ~4,026 contact/color iterations**. Test one evidence-supported, topology-independent change with unchanged KKT, energy, momentum, and rollback gates. Run one automated, headless matched sweep. Do not add speculative caching, GUI captures, or long performance campaigns at this checkpoint.
+**Next action:** Use the existing headless trace tooling to quantify contact-color/order variation and compare repeatability before trying another restart threshold. If the noise masks small changes, stop tuning thresholds and assess one evidence-supported algorithmic approach to large connected contact graphs. Preserve exact KKT/energy/momentum acceptance and rollback.
 
-**Evidence:** `G5-Skip-Overwritten-Residual-20261018.zip`, uploaded to this conversation. Contains 200 timed trials, six separate chain traces, 34 recorded unit tests, baseline/candidate source, GPU output exports and verified 50-row JSON/CSV summary. No local D3D12 execution was performed in this documentation review.
+**Evidence:** `G5-Early-Restart-Rejected-20261019.zip`; one recorded Windows batch with 200 timing trials, 40 separate traces, 37 passing unit tests, source/build hashes and verified 50-row CSV/JSON summaries. No GPU run or production shader change was made during the documentation review.
 
 ## 16. Risks and work still required
 
 1. **Strict state isolation:** Replace per-body in-place publication with a proven completed-generation handoff. Measure any copy or memory cost.
 2. **General island convergence:** Residual-gated policy 4 passes the limited quick sweep and avoids unnecessary restarts in branching/oblique cases. It remains opt-in and unqualified for sustained/general workloads; preserve KKT limits and rollback.
-3. **Large-island parallelism:** Conditional residual-scan skipping reduced the observed 1,024-body policy-4 solver from about 163.33 to 153.93 ms, but required iterations remain ~4,026. Actual DRAM stalls, synchronization share and FP64 utilization are unverified. Focus on reducing required solver work rather than another speculative cache or a multi-workgroup rewrite.
+3. **Large-island solver convergence and reproducibility:** Early restart reduced hard-chain iteration counts but worsened the policy-4 geometric mean. Variable contact coloring and two-sample GPU noise obscure some effects. Diagnose repeatability before further threshold changes; actual DRAM stalls, synchronization share and FP64 utilization remain unverified.
 4. **Scheduler scope:** A reusable resource monitor and dependency scheduler are design goals, not completed general-purpose services.
 5. **Display verification:** Collect real local display evidence for GPU-02 when required. Do not confuse Present calls with scanout.
 6. **Evidence and deterministic replay:** The isolated policy-4 baseline has been recovered with all 25 source hashes and a successful 80-run behavioral sweep. Historical and rebuilt CLI hashes differ and the comparison reports 156 numerical and 23 color-count differences. Track compiler/link inputs and exact revision, shader hashes, fixtures and GPU/driver context; do not claim byte-identical replay.
@@ -624,6 +649,7 @@ Next action:
 | 2026-10-18 | G5 isolated baseline — RECOVERED / NOT QUALIFIED | Restored 25 source files and six workflow hashes; archived 33 passing workflow tests, an 80-run Windows sweep, and 74 accepted/six expected rejected trials. Policy 4 passed 20/20. Rebuilt CLI differs in SHA and the per-run record has 156 numerical differences, so exact replay remains unverified. |
 | 2026-10-18 | G5 residual body-snapshot reuse — RETAIN LOCALLY | Audited a small HLSL change, static DXIL reductions, 200 control/candidate GPU trials and 33 unit tests. Retained after independent correctness checks and aggregate p50 improvements. 1,024-body GPU p50 167.33→162.99 ms, with individual fixture regressions and no formal G5 qualification. |
 | 2026-10-18 | G5 skip overwritten residual scans — RETAIN LOCALLY | Audited a conditional skip before mandatory reconstructed-state residual checks. Reviewed 200 recorded headless timing trials, six traces, 34 final unit tests, matching JSON/CSV summaries and source hashes. Policy-4 chain-1,024 p50 165.61→155.86 ms; 4,026 iterations unchanged. Broad geometric-mean gain only 0.28%. G5 remains unqualified. |
+| 2026-10-19 | G5 early residual restart — REJECT / ROLLBACK | Audited 200 timed trials, 40 traces and 37 unit tests. Early policy-4 restarts saved 256 iterations on large chains, but its ten-fixture geometric-mean GPU p50 worsened 0.97%, failing the retention rule. Tested shader rolled back byte-for-byte; production policy 1 remains unchanged. |
 
 ---
 
