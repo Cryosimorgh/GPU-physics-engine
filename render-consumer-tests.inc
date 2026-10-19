@@ -4,7 +4,7 @@
 static Viewer *vheadless_open(StorageDevice *d,const uint64_t *base,uint32_t profile,uint32_t depth){
  PhysicsConfig pc={16,32,256,256,1,profile,4096,20,4096,8388608,7,UINT32_MAX,1.f/128,0};
  Physics *p=ph_open(d,base,&pc);if(!p||!ph_scene(p)||!ph_state_reserve(p,depth+1)){if(p)ph_close(p);return NULL;}
- Viewer *v=calloc(1,sizeof(*v));if(!v){ph_close(p);return NULL;}v->d=d;v->p=p;v->bootstrap=d->slot;v->headless=1;v->running=1;v->selected=UINT32_MAX;
+ Viewer *v=calloc(1,sizeof(*v));if(!v){ph_close(p);return NULL;}v->d=d;v->p=p;if(!ph_consumer_hold(p)){free(v);ph_close(p);return NULL;}v->consumer_owner=1;v->bootstrap=d->slot;v->headless=1;v->running=1;v->selected=UINT32_MAX;
  v->cfg=(ViewerConfig){.n=16,.capacity=32,.profile=profile,.depth=depth,.mode=2,.separate_queue=1,.snapshot=1,.width=128,.height=96,.steps=64,.source_epoch=1};
  v->source=base[0];v->maps=base[1];v->meta=ph_metadata(p);v->width=128;v->height=96;v->tables=v->columns=1;
  v->camera_x=profile==13?1.27f:.75f;v->camera_y=profile==13?.635f:.5f;v->half_height=1;v->samples=calloc(64,sizeof(VSample));if(!v->samples)goto fail;

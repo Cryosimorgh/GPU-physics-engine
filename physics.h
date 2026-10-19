@@ -5,6 +5,10 @@ typedef struct PhysicsConfig {uint32_t n,capacity,contacts,pairs,design,fixture,
 typedef struct PhysicsResult {uint32_t error_flags,done,contacts,added,roots,queue,islands,largest,solved_bodies,solver_dispatches,total_iterations,max_iterations,rounds,published,active,woken;double gpu_us[64],cpu_us,blocking_us,allocation_us;uint64_t committed;double api_us;uint32_t command_packets;double queue_submit_us,cpu_record_us;uint32_t queue_submit_calls,execution_mode,admission_spent,retry_count;double retry_gpu_us,retry_control_us;} PhysicsResult;
 Physics *ph_open(StorageDevice*,const uint64_t*,const PhysicsConfig*);
 void ph_close(Physics*);
+int ph_failure_cleanup(Physics*);
+int ph_teardown(Physics**);
+int ph_consumer_hold(Physics*);
+void ph_consumer_drop(Physics*);
 int ph_scene(Physics*);
 int ph_input(Physics*,const void*,uint32_t);
 int ph_tick(Physics*,uint32_t,PhysicsResult*);

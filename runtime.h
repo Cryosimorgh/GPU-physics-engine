@@ -1,6 +1,18 @@
 #pragma once
 #include <stdint.h>
 typedef struct StorageDevice StorageDevice;
+enum {S_CONTEXT_CLOSED=0,S_CONTEXT_ACTIVE=1,S_CONTEXT_FAILED,S_CONTEXT_REMOVED,S_CONTEXT_QUIESCING};
+enum {S_FAULT_CLOSE=1,S_FAULT_SIGNAL=2,S_FAULT_WAIT=3};
+typedef struct DeviceStatus {uint64_t identity;uint32_t state,owners,live_buffers,claims,unfenced,quiesced;int32_t error,removed_reason;} DeviceStatus;
+int s_device_check(StorageDevice*);
+uint32_t s_device_state(StorageDevice*);
+int s_device_error(StorageDevice*,int32_t);
+int s_device_info(StorageDevice*,DeviceStatus*);
+int s_drain(StorageDevice*,uint32_t timeout_ms);
+int s_quiesce(StorageDevice*,uint32_t timeout_ms);
+int s_try_close(StorageDevice**,uint32_t timeout_ms);
+// Explicit test-only injected API failures, never physical removal claims.
+void s_test_api_fault(StorageDevice*,uint32_t point,uint32_t count);
 typedef struct Memory {uint64_t budget,usage,nonlocal_budget,nonlocal_usage,committed,peak_committed,peak_usage,allocations,releases,context_committed; } Memory;
 StorageDevice *s_open(int debug);
 void s_close(StorageDevice*);

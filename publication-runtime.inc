@@ -5,7 +5,7 @@ uint64_t s_unique_id(void){
  for(;;){if(old==INT64_MAX)return 0;LONG64 next=InterlockedCompareExchange64(&publication_identity,old+1,old);if(next==old)return (uint64_t)old+1;old=next;}
 }
 uint64_t s_identity(StorageDevice *s){return s?s->identity:0;}
-int s_state_owner_hold(StorageDevice *s){if(!s||s->state_owners==UINT32_MAX)return 0;s->state_owners++;return 1;}
+int s_state_owner_hold(StorageDevice *s){if(!s_active(s)||s->state_owners==UINT32_MAX)return 0;s->state_owners++;return 1;}
 void s_state_owner_drop(StorageDevice *s){if(!s||!s->state_owners)abort();s->state_owners--;}
 int s_test_device_identity(StorageDevice *s){
  StorageDevice *other=s_open(0);if(!other)return 0;
