@@ -455,6 +455,39 @@ The retained default source SHA-256 is `39d7d5e606dfad1cbd71de04e1de68a3d7d008e3
 
 **Local evidence:** `dev-test-results/g5-early-restart-20261019T032246446898Z/` contains all source/build hashes, unchanged-policy comparisons, JSON/CSV timing and correctness results, raw exports, all 40 full residual traces, unit/build logs, rejected shader snapshot, and `rejection-and-preservation.json`. The consolidated output is `dev-test-results/early-restart-quick-console.log`. The single focused handoff includes the candidate shader as evidence for reproduction; it does not activate the rejected solver.
 
+### G5 measurement repeatability - quantified, no solver change (2026-10-19)
+
+**Method:** `python measure_repeatability.py` uses the recovered `fixture()` / `execute()` / independent audit with the retained policy-4 executable and shaders. There are no builds, shader edits, changed equations, threshold/default changes, or rejected early-restart code. Four paired A/A controls per fixture alternate AB/BA across the ten existing fixtures: **80 serialized cold one-tick GPU cases**, eight per fixture. Both labels execute the same physical executable and shader files, whose hashes are checked before and after the batch. All source and fixture hashes, runtime adapter/driver identity (RTX 4070 Ti SUPER), and retained solver SHA-256 `10c5ee6541c7799119a9578b304c51f8d3de3938e2221613894bc7fae75d5c24` stay fixed. All 80 cases pass existing exhaustive physics checks. The 43 preflight CPU tests pass.
+
+**Signatures and validation:** Exact integer geometry bits and stable entity generations form a canonical contact-set hash. Separate hashes retain contact-record order, root-contact order, color assignment, color-pass order, within-color stream order, local mapping, free-state bits, and final FP64 work state. The parser verifies complete root/colored coverage, prefix bounds, matching color labels, and disjoint bodies within each color. A color-pass hash sorts only within a verified conflict-free color; those operations are independent. Every fixture has one invariant canonical contact/geometry set and one invariant free state across all eight runs. No repeated arithmetic schedule produced different iterations or final FP64 work results. This is observed coverage, not a proof for schedules that never repeated.
+
+| Fixture | N | Distinct color-pass signatures / 8 | Iterations min-max | Complete GPU tick min-max | GPU CV |
+|---|---:|---:|---:|---:|---:|
+| Chain | 16 | 1 | 452-452 | 2.55-2.57 ms | 0.18% |
+| Chain | 64 | 1 | 367-367 | 2.30-2.34 ms | 0.60% |
+| Chain | 256 | 5 | 4,035-4,036 | 32.37-37.98 ms | 6.93% |
+| Chain | 1,024 | 8 | 4,024-4,026 | 154.64-169.29 ms | 2.95% |
+| Branching | 64 | 1 | 321-321 | 2.79-2.80 ms | 0.11% |
+| Branching | 256 | 7 | 1,194-1,195 | 13.91-16.64 ms | 5.04% |
+| Dense | 64 | 4 | 107-107 | 1.79-2.06 ms | 4.81% |
+| Dense | 256 | 8 | 417-418 | 9.49-10.30 ms | 3.08% |
+| Oblique/friction | 64 | 3 | 265-309 | 4.71-5.46 ms | 6.39% |
+| Oblique/friction | 256 | 8 | 816-1,087 | 24.93-32.47 ms | 8.79% |
+
+**Observed cause and separation:** `physics.hlsl:98` scatters root contacts with atomic ranks; its serial greedy `ph_color()` consumes that order. `ph_members()` similarly assigns local indices with atomic ranks. `ph_color_ranges()` atomically permutes records within each conflict-free color. These are legal scheduling variations, not lost/duplicate contacts. In chain-256, the number of colors/batches varies between two and three despite almost unchanged iterations. Its overall tick CV is 6.93%, but pooled within-equivalent-arithmetic-schedule CV is 0.51% (five samples in two repeated cohorts). Chain-64 changes contact/within-color stream order while retaining its color passes and exactly 367 iterations. Other repeated arithmetic cohorts also retain their numerical results.
+
+**Unchanged restart behavior is independently checked offline:** Existing trace artifacts from the preceding two tasks have identical executable and full shader hashes. Both chain-256 traces restart at 512, but their color counts differ (two versus three) and their iterations differ (4,035 versus 4,036). Both chain-1,024 traces restart at 512 and have three colors, yet different pass assignments and 4,026 versus 4,025 iterations. Chain-64 has no restart, the same color passes, and 367 iterations in both. No additional GPU trace runs were needed. The new uninstrumented timing cases do not measure per-case restart count; that boundary is explicit in JSON.
+
+**Execution-time uncertainty:** Stricter cohorts also match contact-record placement, root indices, colored stream and local map. Their within-cohort tick CV is 0.18% for chain-16 and 0.54% for chain-64; larger exact-dispatch repeats are absent. The chain-1,024 has eight distinct schedules, so its hardware/runtime-only variation is **UNVERIFIED**, not 2.95% and not zero. Holding only iteration count and batch count gives 2.90% solver CV there, but color/order and branch-work differences still confound that number. Total tick measurements can also include upstream spatial/runtime variation. No clock, cache, bandwidth, or hardware-stall attribution is claimed.
+
+**A/A implication:** The identical-code B/A split yields per-fixture median ratios from **0.86647 to 1.12823**, with geometric-mean ratio **0.98884** and summed-p50 ratio **0.99551**. Thus the old numerical performance thresholds alone can show an apparent aggregate gain when no optimization exists. Eight cold samples provide descriptive variation, not confidence limits or a universal noise threshold. Historical gate/retention decisions are preserved, but subpercent margins are not established speedup evidence. Future comparisons need equivalent schedule cohorts or measurement-only deterministic replay plus repeated blocked controls before using those thresholds.
+
+**Analysis-only defect corrected:** The first exact-dispatch hash omitted contact-record placement. A focused regression now distinguishes identical semantic color work with different arena layouts. All seven signature tests pass after the fix; all 80 saved exports were reprocessed with **zero extra GPU runs**. Previous JSON/CSV analysis is preserved under `*-before-dispatch-signature-fix.*`; raw GPU exports were never replaced. This did not change the table or GPU results.
+
+**Decision and next target:** No concrete solver-math, coverage, synchronization, or resource defect was observed; production code and defaults remain unchanged. First make contact/color scheduling reproducible for measurement. Then evaluate general color-pass reduction: chain-256 demonstrates that coloring can change work per iteration without changing contact equations. Include ordering/color construction cost in complete-tick comparisons. Do not retune restart policy against unmatched schedules. G0-G4 statuses are unchanged; G5 remains **NOT QUALIFIED**.
+
+**Preservation/evidence:** Work is isolated in `g5-repeatability-work`, branch `g5-measurement-repeatability-20261019`; the preceding workspace's 388 file hashes and uncommitted state are unchanged. `dev-test-results/g5-repeatability-20261019T033814027715Z/` contains all raw state/contact exports, signatures, cohort statistics, JSON/CSV, asset/source/fixture manifests, device identity, unit logs, analysis-correction history, and archived-restart comparison. `measure_repeatability.py --analyze-only <results.json>` documents the one-time correction path and submits no GPU work. No GUI, screenshots, manual per-case GPU tests, full campaign, or release package was used.
+
 ## 9. Global time, sleeping, and simulation state
 
 **Code:** `physics.c`, `physics.hlsl`, `viewer.c`.
