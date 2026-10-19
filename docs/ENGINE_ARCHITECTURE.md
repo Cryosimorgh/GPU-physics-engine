@@ -1,10 +1,10 @@
 # GPU Physics Engine — Technical Architecture and Development Record
 
 **Project:** [Cryosimorgh/GPU-physics-engine](https://github.com/Cryosimorgh/GPU-physics-engine)  
-**Record date:** 2026-10-18  
+**Record date:** 2026-10-19
 **Document type:** Living engineering record  
 **Style:** Clear technical English, based on ASD-STE100 principles without strict controlled-language limits  
-**Status:** Experimental GPU physics engine. G5 and production release are **not qualified**.
+**Status:** Experimental GPU physics engine. G5 is **DEFERRED / NOT QUALIFIED**. G6 and production release remain **NOT QUALIFIED**. P4 is integrated as an explicit option after G6-P5 headless validation; matching-tick rendering remains the default.
 
 > **Update rule:** Update this document in the same change that closes, rejects, or reopens a development breakpoint. Keep prior results and their limitations. Do not turn a local experiment into a released feature by changing its status here.
 
@@ -724,6 +724,53 @@ The two hard-chain rejected cases spent another ~699/651 units of charged trial 
 
 **Evidence:** `G6-P4-Nonblocking-Consumer-20261019.zip`, `DECISION.txt`, `REPRODUCE.txt`, `MANIFEST.json`, `changes.patch`, `changes/{viewer.c,render-consumer.inc,nonblocking-consumer-tests.inc,...}`, `evidence/g6-p4/{results.json,results.csv,nonblocking.json,gate-G6-P4.json}`, archived logs, DXIL and candidate/control executable hashes.
 
+### G6-P5 integrated nonblocking renderer — SELECTABLE, BLOCKING DEFAULT (2026-10-19)
+
+**LOCAL INTEGRATION PASS; formal G6 NOT QUALIFIED; G5 DEFERRED / NOT QUALIFIED.** This breakpoint starts at merged main `f32798ba09f8`, not the older P3 head. A real merge retains P4 `aa7d77cdfcef` and main as parents. Main's complete architecture document and repository inventory are preserved; the conflicted older P4 document was not substituted. Earlier P4 audit statements about unmerged source describe their historical review point; this P5 decision supersedes that integration status.
+
+**Integration scope and default:** Main differed from P3 only in accumulated architecture/inventory records and the already-correct five-resource comment. Necessary P4 renderer ownership, deferred-retirement helpers and headless tests were integrated. `ViewerConfig.nonblocking` explicitly selects matching-tick mode (`0`, default) or last-accepted-generation mode (`1`). The reference CLI, benchmark and playable entry points accept `--nonblocking 0|1`; zero-initialized application config preserves main's default behavior. Interactive scene requests copy the same config. Invalid selection is rejected. The previous direct consumer-test API remains available for P3/P4 tests; current headless measurements select their mode explicitly.
+
+Both modes bind immutable accepted snapshot buffers and P2 dependencies, register consuming queue/fence ownership before submission, queue-wait for the leased generation's readiness and release only after completion. Nonblocking ordinary frames may draw the previous accepted generation while a newer tick is pending; promotion remains at ordered validation/retirement. Prepared/submitted cancellation, explicit capacity pressure and bounded frame-slot retirement are unchanged. Command-bearing frames still wait for the matching tick and status word. Physics impact event identity is the validated simulation generation. No physics source, solver math, shader, KKT tolerance, fixed tick or rollback rule changed; all 85 DXIL outputs match the retained P4 working tree. No scheduler or extra renderer GPU allocation was added.
+
+**Bounded Windows proof:** `python run_g6_p5.py` builds/reuses verified source/tool/options/output caches, then serializes one bounded CLI batch. Final evidence has **20 PASS records: 12 fresh process runs plus eight checks reused only with exact command/executable and, for syntax checks, input hashes**. Three application CLI files pass syntax checks; the actual C/D3D12 renderer and C++ host are compiled into both headless executables. This does not claim the graphical applications were launched. Default and opt-in consumers, native gated-producer draws, delayed consumers, private-buffer poisoning, rejection/rollback, matching-tick command acknowledgement, generation reuse/stale handles, 64-lease exhaustion, prepared cancellation/submitted failure and cleanup pass. Publication/ownership and pool idle/collision/energy regressions pass. No unfinished or rejected generation is bound by the real draw tests.
+
+An initial fixture defect left a one-tick command in the upload buffer. Both modes correctly rejected tick 1 with error 128. The fixture now clears the command on inactive ticks exactly as existing pool tests do. The failed batch, logs, driver and source are retained under `fixture-command-failure`; validation was not relaxed. The corrected comparison uses newly matched final-source binaries for all eight timing trials. Unaffected physics and syntax checks were reused; all timed comparisons were rerun consistently after the fixture fix.
+
+The timing batch uses existing separate compute/graphics queues, two 16-body fixtures, four warmup and 16 measured frames per process, and AB/BA repeats: **32 timed frames per mode per workload, 128 timed / 160 total verified frames**. Complete-frame wall time includes command upload when present, CPU record/submission, both GPU completions and readback/validation of the actual draw. Final full body-buffer FNV-64 signatures match across modes/repeats, outside timing; existing independent physics regressions remain the physical reference. All command frames have age zero; ordinary opt-in frames have age one. Gated-producer tests additionally demonstrate age two without premature publication.
+
+| Workload / metric | Blocking p50 / p95 | Nonblocking p50 / p95 |
+|---|---:|---:|
+| Idle: pre-submit acceptance wait, us | 560.7 / 1162 | 0 / 0 |
+| Idle: CPU record + submit, us | 376.8 / 721 | 374.2 / 673 |
+| Idle: CPU queue submission, us | 124.2 / 458.8 | 124 / 410.8 |
+| Idle: complete CPU handoff, us | 947.5 / 1778.9 | 383.2 / 683.6 |
+| Idle: GPU tick interval, us | 790.5 / 1393.5 | 796.75 / 1204 |
+| Idle: GPU render interval, us | 16.384 / 18.752 | 23.552 / 26.624 |
+| Idle: complete frame wall time, us | 1023.9 / 2031.7 | 1079.6 / 1510.5 |
+| Idle: snapshot age, ticks | 0 / 0 | 1 / 1 |
+| Pool motion / commands: pre-submit acceptance wait, us | 402.3 / 588.8 | 0 / 410.4 |
+| Pool motion / commands: CPU record + submit, us | 292.7 / 322.3 | 272.9 / 307.8 |
+| Pool motion / commands: CPU queue submission, us | 48 / 59.5 | 39.2 / 53.9 |
+| Pool motion / commands: complete CPU handoff, us | 706.4 / 880.8 | 281.1 / 759.7 |
+| Pool motion / commands: GPU tick interval, us | 365 / 370 | 366.5 / 370.75 |
+| Pool motion / commands: GPU render interval, us | 18.432 / 20.48 | 22.528 / 25.6 |
+| Pool motion / commands: complete frame wall time, us | 836.8 / 1503.8 | 664.9 / 1173.1 |
+| Pool motion / commands: snapshot age, ticks | 0 / 0 | 1 / 1 |
+
+| Workload | Blocking complete frames/s | Nonblocking complete frames/s | Committed bytes / allocations, either mode |
+|---|---:|---:|---:|
+| Idle | 875.765 | 941.498 | 2,686,976 / 39 |
+| Pool motion / commands | 1061.652 | 1324.059 | 2,752,512 / 40 |
+
+
+Throughput is total completed measured frames divided by the sum of complete-frame wall intervals, not reciprocal median latency, Present rate or displayed FPS. Common offscreen coverage-query instrumentation and validation are included. Initialization, warmup, final signature readback and teardown are excluded. These serial complete-to-complete frames do not establish sustained application throughput at a larger frame backlog or on a physical display. `retirement_blocking_us` remains the historical inclusive backpressure field; use explicit acceptance and complete-frame wall timings above rather than interpreting that field as pure retirement time.
+
+The current GPU **tick** median regression is small (about 0.8% idle, 0.4% pool), unlike P4's earlier approximately 30% observation. GPU **render** medians still increase (16.384→23.552 us idle, 18.432→22.528 us pool). No hardware-counter attribution is proven. Pooled measured frame throughput improves about 7.5% idle and 24.7% pool, but idle median frame latency worsens (1023.9→1079.6 us), ordinary snapshots are one fixed tick older, and these are short local measurements. Pool motion/command timings contain **zero contacts** in this short window; collision/energy correctness comes from the separate targeted regressions, not a collision-throughput claim. The idle workload records 16 contacts across each arm's 32 measured ticks. Command frames are four of the 32 timed pool frames per mode and retain acceptance waits (nonblocking p95 410.4 us).
+
+**Decision:** Keep nonblocking available as an explicit latency/freshness tradeoff; **blocking remains the unconditional default**. The limited benefit is useful for opt-in experiments, but does not justify changing general application freshness or claiming a universal GPU/throughput improvement. No added GPU committed bytes or allocations occur between modes. A one-tick simulation age at 128 Hz is 7.8125 ms of simulation time, not measured photon/display latency. Same-queue and sustained interactive throughput were not measured here. P1/P2 break timestamp attribution remains unresolved and is not used in this decision.
+
+Evidence: `evidence/g6-p5/{integration.json,baseline-test.json,results.json,results.csv,throughput.csv,reconciliation.json,gate-G6-P5.json}`, per-process raw JSON/logs, source/binary hashes, and the focused ZIP. `python verify_g6_p5.py` independently reconciles all 32 metric rows, four throughput groups, full-state signatures, command ages and unchanged per-workload memory. The original workspace retains all 340 recorded tracked-file hashes and dirty status. Physical device loss/recovery, GPU-02/display and formal G6 remain UNVERIFIED / NOT QUALIFIED. The next separate task is device-loss detection, safe ownership teardown and recovery-boundary validation; no removal/recreation test was performed here.
+
 ## 9. Global time, sleeping, and simulation state
 
 **Code:** `physics.c`, `physics.hlsl`, `viewer.c`.
@@ -846,7 +893,7 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
 | **G5** | Large islands, convergence, robust solver performance | **DEFERRED — CURRENT WORKSTREAM CLOSED; NOT QUALIFIED** | Algorithmic Anderson candidate rejected: eight formerly converging configurations lost convergence. Retained shader restored; large connected-island latency/convergence remains an accepted *development risk*, not a gate pass. Restart only on a demonstrated workload need or a separately authorized architecture prototype. |
-| **G6** | Reproduce applicable gates, approve an engine foundation | **P1–P3 source integrated; P4 LOCAL PREPARATION PASS; formal G6 NOT QUALIFIED** | P4 isolated nonblocking accepted-state consumer: 11 PASS records, CPU wait p50 366.5→0 μs, GPU tick p50 602.5→786.5 μs and snapshot age 0→1. Source not merged or Windows-retested on current integrated head; device loss and display remain open. |
+| **G6** | Reproduce applicable gates, approve an engine foundation | **P1–P4 integrated; P5 LOCAL INTEGRATION PASS; formal G6 NOT QUALIFIED** | Selectable nonblocking rendering validated on merged-main lineage. Blocking default; bounded CPU/throughput/freshness tradeoff measured. Device loss, display and sustained workloads remain open. |
 
 ### Current G5 decision (2026-10-19)
 
@@ -858,7 +905,7 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 
 **Evidence:** `G5-Algorithmic-Convergence-20261019.zip`, 2026-10-19, evidence branch `g5-convergence-anderson-20261019`, revision `a147f6bf265bc82060107358cd41157e38d371c2`. ZIP CRC and 2,159 file hashes verified; 240 recorded Windows runs, 20 residual probes, independent statuses/invariant/rollback checks and 46/49 unit-test logs inspected. No independent Windows GPU test or production shader merge was performed for this documentation decision.
 
-### Current G6 preparation decision (2026-10-19)
+### G6 preparation decision before P5 integration (2026-10-19)
 
 **Finding:** P1–P3 source and playable renderer were integrated into `main` and the playable branch in PRs #1/#2, preserving both histories and the complete architecture record. The new P4 experiment is **separate**: it compiles the real offscreen renderer to lease the last accepted generation while a newer compute tick is pending and validates the newer tick at ordered retirement. A native gated-producer test proved two GPU draws from generation 0 while newer work was blocked (ages 1/2) with successful later release, rejection/rollback, lease exhaustion and delayed cancellation. The Windows evidence records 11 passed tests (six freshly executed, five unchanged-binary reuses). In one matched 32-sample-per-arm headless timing set, median CPU acceptance blocking fell **366.5→0 μs** and CPU handoff **751.3→347.0 μs**, but physics GPU tick increased **602.5→786.5 μs**, renderer GPU time **16.384→22.528 μs**, and accepted snapshot age rose from **zero to one tick**.
 
@@ -868,15 +915,19 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 
 **Evidence:** `G6-P4-Nonblocking-Consumer-20261019.zip`, commit `aa7d77cdfcef0efe777539aa876d2a5b05cb7ba3`; 149/149 archive hash checks and offline verifier pass; recorded 11 PASS test entries, control/candidate EXE hashes and all 14 raw-timing reconciliations checked; no independent Windows GPU run during this GitHub documentation update.
 
+### Current G6 preparation decision — P5 (2026-10-19)
+
+P4 source is integrated with current main through a history-preserving merge and tested in one corrected bounded Windows headless comparison. Both modes preserve immutable accepted snapshots, command acknowledgement, fences, ownership, rollback and backpressure. Nonblocking is an explicit `--nonblocking 1` option; blocking (`0`) remains the application default. Twenty final checks pass, eight reused on unchanged inputs. See the P5 technical decision for measured throughput, increased render GPU intervals and one-tick ordinary snapshot age; this is not G6 qualification or displayed FPS. Physical device-loss detection, safe teardown and recovery-boundary validation are the next separate task. G5 remains deferred.
+
 ## 16. Risks and work still required
 
-1. **State publication and freshness:** P1–P3 source is integrated; P4 has a separate local correctness pass for rendering the last accepted immutable generation while producer work is pending. Normal command-free submit is nonblocking but frames are one tick older in the measured case (two under gated-producer test); command acknowledgment still waits. Validate P4 on the newly merged source and prove user-visible freshness/interaction separately before treating this as a production default.
+1. **State publication and freshness:** P1–P4 are integrated and P5 has bounded Windows headless evidence. Blocking remains the application default. Opt-in ordinary rendering uses an accepted generation one tick older in the measured case (two in the gated test); command acknowledgement still waits. Qualify user-visible freshness and sustained/same-queue behavior separately before changing defaults.
 2. **General island convergence — deferred G5 debt:** Policy 4 remains opt-in with limited, valid quick-sweep results; it is not qualified for sustained/general workloads. The rejected Anderson trial lost previously accepted configurations. Do not loosen KKT/rollback or describe G5 as passed; reopen only against an explicit large-island requirement and new algorithmic design.
 3. **Large-island architectural limitation — parked:** The 1,024-body chain requires about 4,024 sweeps, with ~140 ms of solver execution in deterministic test conditions. Its settled chain operator is poorly conditioned (~424,971). Recent noise-aware micro-optimizations were inconclusive; a bounded Anderson method broke convergence. The serial O(C²) deterministic sorter remains measurement-only. Do not initiate further G5 experiments without an authorized performance target and a new architecture hypothesis.
 4. **Scheduler and resource-management scope:** G6-P3 raises the bounded consumer extra dependency count to **five** for the actual renderer; the stale header comment was corrected at integration. The API stays CPU-owner-thread serialized with 64 task/lease entries and 32 producer dependencies. Queue/fence claims do not implement a general multi-producer scheduler or GPU core allocator.
 5. **Display verification:** Collect real local display evidence for GPU-02 when required. Do not confuse Present calls with scanout.
 6. **Evidence and deterministic replay:** The isolated policy-4 baseline has been recovered with all 25 source hashes and a successful 80-run behavioral sweep. Historical and rebuilt CLI hashes differ and the comparison reports 156 numerical and 23 color-count differences. Track compiler/link inputs and exact revision, shader hashes, fixtures and GPU/driver context; do not claim byte-identical replay.
-7. **G6 performance, device loss and qualification:** P4 eliminates the measured CPU pre-submit acceptance wait (366.5→0 μs), but same-batch GPU tick (602.5→786.5 μs) and render (16.384→22.528 μs) p50 worsen, and one tick of accepted-state age is introduced. P3's historical ~1.13-ms wait is from another measurement set; do not combine it as a paired comparison. The test remains offscreen without physical D3D12 removal/recreation, `Present`, network consumers, or formal G6 signoff. P2 break-workload timing mode remains unresolved. G4/G5 claims are not waived.
+7. **G6 performance, device loss and qualification:** P5 measures complete offscreen frames, CPU submission and snapshot age on integrated code. Nonblocking improves local pooled throughput but increases render GPU intervals, worsens idle median frame latency and trades one tick of freshness. The short pool-motion fixture has no contacts; no collision-scalability or display claim follows. Physical device removal/recreation, network consumers, sustained throughput and formal G6 signoff remain unverified; P2 break timing attribution is unresolved.
 
 ## 17. How to update this living document
 
@@ -911,6 +962,7 @@ Next action:
 
 | Date | Breakpoint | Record update |
 |---|---|---|
+| 2026-10-19 | G6-P5 current-main/P4 integration — SELECTABLE, BLOCKING DEFAULT | Preserved both histories and full main architecture; 20 PASS records (12 fresh/8 unchanged-input reuse). Measured complete throughput +7.5% idle / +24.7% short pool motion; render intervals increase, snapshot age +1, no allocation growth. Fixed stale-command benchmark fixture without weakening validation. G5 deferred, G6 not qualified; device-loss boundaries are next. |
 | 2026-10-18 | Baseline document | Established the technical inventory, G0–G5 history, evidence labels, known risks, and mandatory breakpoint update process. No new gate was approved by this documentation commit. |
 | 2026-10-18 | G5 adaptive-solver decision — FAIL | Reviewed 60 CLI runs and matching JSON/CSV summary. The adaptive policy converged in 16/20 runs but failed the 256- and 1,024-body chains. It was rejected; the previous policy remains the local baseline, and G5 stays open. |
 | 2026-10-18 | G5 bounded-restart candidate — CONDITIONAL | Reviewed 60 headless GPU runs and six diagnostics. Policy 3 converged in 20/20 local attempts, but 256/1,024-body chains and several branching/oblique networks suffered performance penalties. Production remains unchanged; G5 remains unqualified. |
