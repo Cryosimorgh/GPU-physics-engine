@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 3,
   "hud_pixel_stride": 8,
   "hud_pixel_capacity": 16384,
   "camera": [
@@ -73,27 +73,27 @@
     ],
     [
       "float",
-      "unused17"
+      "arenaWidth"
     ],
     [
       "float",
-      "unused18"
+      "arenaHeight"
     ],
     [
       "float",
-      "unused19"
+      "pickX"
+    ],
+    [
+      "float",
+      "pickY"
     ],
     [
       "uint",
-      "unused20"
+      "selectedID"
     ],
     [
       "uint",
-      "unused21"
-    ],
-    [
-      "uint",
-      "unused22"
+      "poolCommandByte"
     ],
     [
       "uint",

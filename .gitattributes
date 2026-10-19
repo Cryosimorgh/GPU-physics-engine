@@ -1,1 +1,3 @@
 * -text
+* whitespace=cr-at-eol
+third_party/imgui/** -whitespace

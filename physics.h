@@ -45,3 +45,12 @@ uint32_t ph_next_tick(Physics*);
 uint32_t ph_source_epoch_value(Physics*);
 int ph_source_epoch_set(Physics*,uint32_t);
 int ph_scene_one(Physics*,uint32_t);
+
+// Playground requires a nonzero, initialized, fence-owned 32-byte upload.
+int ph_user_command(Physics*,uint64_t);
+
+int ph_pool_material(Physics*,const float *eight_values);
+int ph_pool_rolling(Physics*,const float *x_then_y_16_each);
+
+#include "state-publication.h"
+#include "work-ownership.h"

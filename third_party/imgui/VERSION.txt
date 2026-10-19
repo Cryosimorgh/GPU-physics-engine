@@ -1,0 +1,4 @@
+Dear ImGui v1.90.9
+Upstream https://github.com/ocornut/imgui
+Commit cb16be3a3fc1f9cd146ae24d52b615f8a05fa93d
+Unmodified core and Win32/D3D12 backend source; MIT license in LICENSE.txt.
