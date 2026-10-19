@@ -80,3 +80,5 @@ void *s_queue_retain(StorageDevice*,void*,uint32_t*);
 void s_queue_release(void*);
 void *s_test_reader_queue(void*);
 uint64_t s_test_reader_output(void*);
+
+uint32_t s_producer_queue_kind(StorageDevice*);

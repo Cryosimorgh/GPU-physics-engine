@@ -82,7 +82,7 @@ int ph_publication_tests(StorageDevice *d,const uint64_t *base){
  // Persistent pool rolling/configuration fields belong to the same snapshot.
  reject=c;reject.n=16;reject.fixture=13;reject.flags=7;
  p=ph_open(d,base,&reject);PUB_REQUIRE(p&&ph_scene(p));float material[8]={.93f,.8f,.2f,.012f,.02f,.15f,9.81f,.02f},rolling[32]={0};rolling[0]=.001f;
- PUB_REQUIRE(ph_pool_material(p,material)&&ph_pool_rolling(p,rolling)&&ph_state_acquire(p,&a)&&a.pool_bytes==160&&a.pool_byte==76ull*a.capacity+256);
+ PUB_REQUIRE(ph_pool_material(p,material)&&ph_pool_rolling(p,rolling)&&ph_state_acquire(p,&a)&&a.pool_bytes==164&&a.pool_byte==76ull*a.capacity+256);
  PUB_REQUIRE(publication_read(d,&a,&old_hash)&&!ph_pool_rolling(p,rolling));
  PUB_REQUIRE(ph_tick(p,0,&r)&&!r.error_flags&&publication_read(d,&a,&ha)&&ha==old_hash);
  PUB_REQUIRE(ph_state_release(p,&a)&&ph_try_close(p));

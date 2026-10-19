@@ -21,7 +21,7 @@ int ph_state_reserve(Physics *p,uint32_t count){
 }
 static int state_record_copy(Physics *p,unsigned i){
  uint64_t target=p->state[i].buffer,bytes=64ull*p->cfg.capacity;
- return s_transition(p->d,p->h[0],1)&&s_transition(p->d,p->owned[1],1)&&s_transition(p->d,target,2)&&s_copy_offset(p->d,target,0,p->h[0],0,bytes)&&s_copy_offset(p->d,target,bytes,p->owned[1],0,256)&&s_transition(p->d,p->h[0],0)&&s_transition(p->d,p->h[2],1)&&s_copy_offset(p->d,target,bytes+256,p->h[2],0,12ull*p->cfg.capacity)&&s_transition(p->d,p->h[2],0)&&(p->cfg.fixture!=13||s_copy_offset(p->d,target,bytes+256+12ull*p->cfg.capacity,p->owned[1],POOL_DATA(p->end),160))&&s_transition(p->d,p->owned[1],0)&&s_transition(p->d,target,5);
+ return s_transition(p->d,p->h[0],1)&&s_transition(p->d,p->owned[1],1)&&s_transition(p->d,target,2)&&s_copy_offset(p->d,target,0,p->h[0],0,bytes)&&s_copy_offset(p->d,target,bytes,p->owned[1],0,256)&&s_transition(p->d,p->h[0],0)&&s_transition(p->d,p->h[2],1)&&s_copy_offset(p->d,target,bytes+256,p->h[2],0,12ull*p->cfg.capacity)&&s_transition(p->d,p->h[2],0)&&(p->cfg.fixture!=13||s_copy_offset(p->d,target,bytes+256+12ull*p->cfg.capacity,p->owned[1],POOL_DATA(p->end),POOL_SNAPSHOT_PERSISTENT_BYTES)&&s_copy_offset(p->d,target,bytes+256+12ull*p->cfg.capacity+POOL_SNAPSHOT_COMMAND_OFFSET,p->owned[1],p->has_tick?POOL_DATA(p->end)+POOL_COMMAND_STATUS_OFFSET:0,4))&&s_transition(p->d,p->owned[1],0)&&s_transition(p->d,target,5);
 }
 static int state_fence_test(Physics *p){for(unsigned i=0;i<p->state_count;i++)if(!state_record_copy(p,i))return 0;return 1;}
 static int state_seed(Physics *p){
@@ -66,7 +66,7 @@ int ph_state_acquire(Physics *p,PhStateLease *v){
  unsigned slot=(unsigned)p->accepted_slot;
  if(s_completed(p->d)<p->state[slot].fence)return 0;
  for(unsigned i=0;i<PH_STATE_LEASES;i++)if(!p->leases[i].value.nonce){
-  PhStateLease a={s_identity(p->d),p->state_context,p->state[slot].serial,++p->lease_nonce,p->state[slot].buffer,p->state[slot].fence,64ull*p->cfg.capacity+256,p->cfg.fixture==13?76ull*p->cfg.capacity+256:0,p->state[slot].generation,p->state[slot].tick,p->state[slot].epoch,p->cfg.n,p->cfg.capacity,slot,p->cfg.fixture==13?160:0,0};
+  PhStateLease a={s_identity(p->d),p->state_context,p->state[slot].serial,++p->lease_nonce,p->state[slot].buffer,p->state[slot].fence,64ull*p->cfg.capacity+256,p->cfg.fixture==13?76ull*p->cfg.capacity+256:0,p->state[slot].generation,p->state[slot].tick,p->state[slot].epoch,p->cfg.n,p->cfg.capacity,slot,p->cfg.fixture==13?POOL_SNAPSHOT_BYTES:0,0};
   if(!s_resource_claim(p->d,a.buffer,PH_WORK_READ))return 0;
   p->leases[i].value=a;p->state[slot].readers++;*v=a;return 1;
  }return 0;

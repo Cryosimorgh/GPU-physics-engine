@@ -49,7 +49,7 @@ float4 felt_ps(BackgroundVertex i):SV_Target{
  if(entityMaps.Load(8*stable)!=i||entityMaps.Load(8*stable+4)==0u||!all(isfinite(p))||!isfinite(radius)||radius<=0)diagnostics.InterlockedOr(0,2);
  diagnostics.InterlockedAdd(4,1);if(all(abs(p-float2(cameraX,cameraY))<=float2(halfWidth,halfHeight)+radius))diagnostics.InterlockedAdd(8,1);
  diagnostics.InterlockedXor(28,colorHash(stable)^colorHash(entityMaps.Load(8*stable+4)));
- if(sample==0u){if((renderFlags&8u)!=0u)diagnostics.Store(28,state.Load(POOL_DATA(G3_METADATA_END(entityCapacity))+POOL_COMMAND_STATUS_OFFSET));uint generation=state.Load(G4_SOURCE_GENERATION_BYTE),physicsError=state.Load(0);diagnostics.Store(12,generation);diagnostics.Store(16,physicsError);diagnostics.Store(20,expectedGeneration);diagnostics.Store(24,attemptTick);if(!physicsError&&generation!=expectedGeneration)diagnostics.InterlockedOr(0,4);if(state.Load(G4_SOURCE_EPOCH_BYTE)!=expectedEpoch)diagnostics.InterlockedOr(0,8);diagnostics.Store(32,stable);for(uint word=0;word<G4_V_CAMERA_WORDS;word++)diagnostics.Store(64+4*word,cameraWord(word));}
+ if(sample==0u){if((renderFlags&8u)!=0u)diagnostics.Store(28,state.Load(poolCommandByte));uint generation=state.Load(G4_SOURCE_GENERATION_BYTE),physicsError=state.Load(0);diagnostics.Store(12,generation);diagnostics.Store(16,physicsError);diagnostics.Store(20,expectedGeneration);diagnostics.Store(24,attemptTick);if(!physicsError&&generation!=expectedGeneration)diagnostics.InterlockedOr(0,4);if(state.Load(G4_SOURCE_EPOCH_BYTE)!=expectedEpoch)diagnostics.InterlockedOr(0,8);diagnostics.Store(32,stable);for(uint word=0;word<G4_V_CAMERA_WORDS;word++)diagnostics.Store(64+4*word,cameraWord(word));}
  if(sample+1u==instanceCount)diagnostics.Store(36,stable);
 }
 

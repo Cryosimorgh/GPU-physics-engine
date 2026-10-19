@@ -8,7 +8,7 @@ static int producer_dependency(PhWorkInfo *w,uint64_t h,uint32_t access){
  if(w->dependency_count==PH_WORK_DEPS)return 0;w->dependencies[w->dependency_count++]=(PhWorkDependency){h,access,0};return 1;
 }
 static int producer_prepare(Physics *p,uint32_t tick,uint64_t header,uint64_t snapshot){
- PhWorkInfo w={0};w.device=s_identity(p->d);w.owner=p->state_context;w.id=p->state[p->pending_slot].serial;w.publication_serial=w.id;w.tick=tick;w.status=PH_WORK_PREPARED;w.queue_kind=0;w.ready_fence=s_fence(p->d);
+ PhWorkInfo w={0};w.device=s_identity(p->d);w.owner=p->state_context;w.id=p->state[p->pending_slot].serial;w.publication_serial=w.id;w.tick=tick;w.status=PH_WORK_PREPARED;w.queue_kind=s_producer_queue_kind(p->d);w.ready_fence=s_fence(p->d);
  for(unsigned i=0;i<8;i++)if(!producer_dependency(&w,p->h[i],i==2||i==7?PH_WORK_READ:PH_WORK_READ|PH_WORK_WRITE))return 0;
  for(unsigned i=0;i<6;i++)if(!producer_dependency(&w,p->owned[i],PH_WORK_READ|PH_WORK_WRITE))return 0;
  uint64_t spatial[16];uint32_t count=sp_resources(p->sp,spatial,16);if(!count)return 0;

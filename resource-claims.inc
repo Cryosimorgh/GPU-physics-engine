@@ -16,3 +16,5 @@ void *s_queue_retain(StorageDevice *s,void *opaque,uint32_t *kind){
  D3D12_COMMAND_QUEUE_DESC desc=ID3D12CommandQueue_GetDesc(q);*kind=(uint32_t)desc.Type;ID3D12CommandQueue_AddRef(q);return q;
 }
 void s_queue_release(void *opaque){if(opaque)ID3D12CommandQueue_Release((ID3D12CommandQueue*)opaque);}
+
+uint32_t s_producer_queue_kind(StorageDevice *s){D3D12_COMMAND_QUEUE_DESC q=ID3D12CommandQueue_GetDesc(s->g.queue);return (uint32_t)q.Type;}

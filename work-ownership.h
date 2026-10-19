@@ -1,6 +1,6 @@
 #pragma once
 #define PH_WORK_DEPS 32
-#define PH_WORK_EXTRA 3
+#define PH_WORK_EXTRA 5
 enum {PH_WORK_READ=1,PH_WORK_WRITE=2};
 enum {PH_WORK_PREPARED=1,PH_WORK_SUBMITTED,PH_WORK_CANCEL_PENDING,PH_WORK_FAIL_PENDING,PH_WORK_COMPLETE,PH_WORK_CANCELLED,PH_WORK_FAILED};
 typedef struct PhWorkHandle {uint64_t device,context,id;} PhWorkHandle;
