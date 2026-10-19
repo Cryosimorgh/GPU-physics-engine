@@ -613,7 +613,7 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G2** | Spatial search and contacts | **Passed in historical scoped tests** | Hash selected; contact construction verified. |
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
-| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Bounded deterministic measurements verified. Post-color barrier coalescing rejected: gain not separable from timing variation. Retained solver restored exactly; production remains policy 1. |
+| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Deterministic contact-local FP64 load reuse passed exact correctness but failed the 1,024-body uncertainty/noise gate. Candidate rejected; retained solver restored exactly. Production remains policy 1. |
 | **G6** | Reproduce all gates, approve an engine foundation | **Not started / not authorized** | Requires G4/G5 closure and architecture proof. |
 
 ### Current G5 decision (2026-10-18)
@@ -679,6 +679,30 @@ The active shader again hashes to `10c5ee6541c7799119a9578b304c51f8d3de3938e2221
 
 **Next target, not implemented:** The unchanged 4,024-iteration FP64 contact/color loop still dominates. Inspect contact-local body reloads between relative-velocity evaluation and impulse application, preserving the updated normal-before-tangent state. Redundant barrier removal alone did not demonstrate a reliable end-to-end gain. G0–G4 remain frozen, G5 unqualified, and G6 unauthorized.
 
+### G5 contact-local FP64 body-load reuse (2026-10-19)
+
+**Decision: REJECT INCONCLUSIVE LARGE-ISLAND GAIN; retained shader restored.** Branch `g5-contact-snapshot-20261019` tested one narrowly scoped candidate. Normal relative-velocity evaluation, normal impulse application, tangent evaluation, and tangent impulse application repeatedly load the same two bodies. Conflict-free coloring guarantees no competing body writer within a color. The candidate loaded two contact-local `Body` snapshots, mutated them with the normal impulse, then used those updated FP64 velocities for tangent evaluation and application. It preserved both ordered stores, wake operations, all color and outer barriers, impulse projection, KKT checks, policies, work limits, and rollback. Reconstruction and residual measurement were unchanged. There was no cross-contact cache, allocation, CPU synchronization, or production scheduling change. Rejected barrier and early-restart changes were not reapplied.
+
+**Static evidence:** Policy-4 compiled DXIL has 191→160 static buffer-load call sites, 153→153 FP64 add/subtract/multiply/divide instructions, and 20→20 barrier sites. This is static evidence for removed repeated loads, not a dynamic transaction, bandwidth, or stall measurement. The compiler uses legacy `bufferLoad`; the zero `rawBufferLoad` counts in `prepared.json` do not mean zero GPU loads. `static-load-analysis.json` records the correct lowering. Macro-disabled controls for all five policies reproduced the retained DXIL hashes exactly. Both arms reused the same fixed instrumented CLI and canonical scheduling shaders. Only ten small solver shader variants were compiled.
+
+**One bounded headless batch:** `dev-test-results/g5-contact-snapshot-20261019T043158954533Z/results.json`, `summary.csv`, raw exports, and disassembly; RTX 4070 Ti SUPER. Eight paired policy-4 trials per existing fixture plus one paired trial for each policy 0–3 produced 240 attempts. All chain (16/64/256/1,024), branching (64/256), dense (64/256), and oblique/frictional (64/256) fixtures retained exact contact/color/local/arithmetic schedules, iterations, FP64 work-state and normal/tangent impulse hashes, and published-state hashes. Existing independent KKT, energy/momentum, contact coverage, conflict-free coloring, and impulse reconstruction checks passed. Each arm had 115 converged attempts and five expected rejections with exact rollback: PGS chains 64/256/1,024 and policy 2 chains 256/1,024. No errors or timeouts occurred. The focused source contract failed before editing as expected; 46 preflight checks and 49 restored-baseline unit checks passed.
+
+Policy-4 1,024-body chain, eight cold samples per arm:
+
+| Metric | Control | Candidate |
+|---|---:|---:|
+| Actual contacts / iterations | 1,023 / 4,024 | 1,023 / 4,024 |
+| Schedule construction brackets | 45.850 ms | 46.994 ms |
+| Solver execution | 142.926 ms | 138.685 ms |
+| Complete GPU tick | 192.734 ms | 189.745 ms |
+| CPU record + submission | 3.505 ms | 3.516 ms |
+
+**Acceptance and uncertainty:** The median solver difference is −2.97%, but the paired geometric ratio is 0.97491 with exploratory paired-bootstrap 95% interval [0.94898, 1.00296]. The predeclared primary criterion required a gain above max(previous 4.3576% A/A floor, current A/A deviation), and an upper interval bound below 1. Current adjacent control A/A pairs gave a 5.3183% floor; the candidate failed both primary conditions. Equal-fixture complete-tick ratio was 0.96623 [0.93714, 0.99502], passing the separate aggregate condition. Aggregate improvement does not override an inconclusive primary large-island result. Some workloads improved (oblique 256 solver 25.352→24.354 ms), but that does not establish the requested large-island gain. The four-pair nearest-rank A/A p95 is the maximum of four observations, not a stable tail estimate. Cold samples and bootstrap bounds do not prove sustained performance or hardware causes. Schedule construction remains test-only, variable in cost, and included in complete ticks.
+
+**Preservation and reproducibility:** The exact active shader hash is again `10c5ee6541c7799119a9578b304c51f8d3de3938e2221613894bc7fae75d5c24`. Original workspace status and all 394 snapshotted file hashes remain unchanged. `experiments/g5-contact-snapshot-20261019.patch` archives the rejected candidate and reused paired driver. The batch archives exact executed source/helper hashes, fixed binaries/tool provenance, predeclared rule, disassembly, raw numerical exports, and restoration proof. To reproduce only in another isolated deterministic-baseline copy, initialize a new directory and `dev-test-results/contact-snapshot-current.txt`, copy the retained shader into that directory as `control-projected_solver.hlsl`, apply the archived patch, and run `python measure_contact_snapshot.py`. Existing deterministic artifacts from `g5-deterministic-20261019T035548203177Z` are required. Do not apply the rejected patch to production. This complete architecture record is carried on the GitHub working branch at this breakpoint; no merge into `main` or gate approval is implied.
+
+**Remaining bottleneck:** The 4,024-iteration FP64 contact/color loop still dominates solver cost. Repeated loads exist, but their removal did not establish a gain beyond the measured large-island timing uncertainty. No further solver optimization or campaign was attempted. G0–G4 remain frozen, GPU-02 unverified, G5 unqualified, and G6 unauthorized.
+
 ## 16. Risks and work still required
 
 1. **Strict state isolation:** Replace per-body in-place publication with a proven completed-generation handoff. Measure any copy or memory cost.
@@ -690,6 +714,7 @@ The active shader again hashes to `10c5ee6541c7799119a9578b304c51f8d3de3938e2221
 7. **Production integration:** G6 must define API stability, error handling, host integration, and long-running device-loss recovery before an engine rewrite is authorized.
 8. **Measurement scheduling:** Canonical schedules now separate arithmetic variability from runtime variability only inside the bounded measurement envelope. Sorting overhead and cold-run timing noise must not be reported as production solver cost or speedup.
 9. **Small optimization claims:** Barrier coalescing passed exact numerical comparison but failed the predeclared uncertainty and aggregate gates. Its shader is rejected; future changes need matched schedules and same-batch noise controls.
+10. **Contact-local load reuse:** Exact arithmetic/result matching passed, but the 1,024-body paired interval included no improvement and the apparent gain fell below the same-batch 5.32% noise floor. The candidate is archived and inactive; aggregate gains must not be presented as a retained optimization.
 
 ## 17. How to update this living document
 
@@ -731,6 +756,7 @@ Next action:
 | 2026-10-18 | G5 shared-body-cache experiment — REJECT | Audited 100 CLI timing trials, 22 probes, 22 unit tests and the HLSL source. 1,024-body GPU p50 improved 170.13→152.69 ms, but aggregate geometric mean worsened 4.25%. Hardware counter attribution is unverified. Default remains cache-off; G5 open. |
 | 2026-10-19 | G5 deterministic measurement — BOUNDED PASS | One 180-trial headless batch plus two safe-envelope rejections: repeatable contact/color schedules, iterations and FP64 results for policies 0–4. Scheduling overhead measured separately; runtime variance remains. Production/solver unchanged; previous handoff hash reconciled with execution-time provenance still unverified. G5 remains open. |
 | 2026-10-19 | G5 post-color barrier coalescing — REJECT | One 240-trial deterministic comparison: exact arithmetic/results, rollback preserved; apparent 1,024-body solver gain failed the 4.36% noise floor and uncertainty/aggregate gates. Exact retained solver restored; rejected patch archived. G5 remains open. |
+| 2026-10-19 | G5 contact-local FP64 loads — REJECT | One 240-trial deterministic paired sweep: exact schedules, impulses, work state, iterations, and rollback. Aggregate tick ratio 0.9662 passed, but 1,024-body solver ratio 0.9749 [0.9490, 1.0030] failed the 5.32% A/A floor and primary confidence gate. Retained shader restored; complete architecture record updated on the GitHub working branch. G5 remains open. |
 
 ---
 
