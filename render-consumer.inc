@@ -24,7 +24,9 @@ static int vconsumer_prepare(Viewer *v,VFrame *f){
  if(v->headless_stats){if(n==PH_WORK_EXTRA)return 0;extra[n++]=(PhWorkDependency){v->stats_readback,PH_WORK_WRITE,0};}
  if(n>PH_WORK_EXTRA||!ph_work_prepare(v->p,extra,n,&f->consumer))return 0;
  if(!ph_work_info(v->p,&f->consumer,&f->consumer_info)){ph_work_cancel(v->p,&f->consumer);memset(&f->consumer,0,sizeof(f->consumer));return 0;}
- f->generation=f->consumer_info.generation;return 1;
+ f->generation=f->consumer_info.generation;
+ uint32_t next=ph_next_tick(v->p);if(f->generation>next){ph_work_cancel(v->p,&f->consumer);memset(&f->consumer,0,sizeof(f->consumer));return 0;}
+ f->snapshot_age=next-f->generation;return 1;
 }
 static int vconsumer_submit(Viewer *v,VFrame *f,uint64_t fence){
  if(G6_RENDER_LEGACY_CONTROL)return SUCCEEDED(ID3D12CommandQueue_Wait(v->graphics_queue,v->d->g.fence,f->cf));

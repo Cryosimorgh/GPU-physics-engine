@@ -6,7 +6,8 @@ typedef struct ViewerConfig {
  uint32_t n,capacity,profile,depth,mode,vsync,separate_queue,snapshot;
  uint32_t width,height,steps,warmup,interactive,debug,visual_stride;
  uint32_t capture_every,self_test,execution,cell_mode,source_epoch,tick_base;
- uint32_t ui_mode;uint64_t budget;
+ // 0: matching-tick rendering (default); 1: last accepted generation.
+ uint32_t ui_mode,nonblocking;uint64_t budget;
  const char *output_path,*capture_prefix;
 } ViewerConfig;
 
@@ -21,3 +22,4 @@ void viewer_hide(Viewer*);
 uint64_t viewer_live_ticks(Viewer*);
 
 int viewer_consumer_test(StorageDevice*,const uint64_t*,uint32_t,uint32_t,const char*);
+int viewer_consumer_mode_test(StorageDevice*,const uint64_t*,uint32_t,uint32_t,uint32_t,const char*);

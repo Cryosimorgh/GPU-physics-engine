@@ -18,7 +18,7 @@ def control_root():
   p=stage/n
   if not p.exists() or p.read_bytes()!=(ROOT/n).read_bytes():p.write_bytes((ROOT/n).read_bytes())
  return stage
-def build(out,control=False):
+def build(out,control=False,blocking=False):
  stage=control_root() if control else ROOT
  spec=importlib.util.spec_from_file_location('p3_control_dev' if control else 'p3_candidate_dev',stage/'dev_test.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
  w=module.Workflow(out);w.generate();w.build('viewer-ABI',['generate_viewer.py','viewer-schema.json'],['viewer-layout.h','viewer-cbuffer.hlsl'],[sys.executable,'generate_viewer.py'])
@@ -35,5 +35,10 @@ def build(out,control=False):
  sources=['render_consumer_main.zig','viewer_runtime.c','bench_support.c','spatial.c','physics.c','physics_verify.c','physics_tests.c']
  cpp=['play_ui.cpp',*[p.relative_to(stage).as_posix() for p in (stage/'third_party/imgui').glob('imgui*.cpp') if p.name!='imgui_demo.cpp'],'third_party/imgui/backends/imgui_impl_win32.cpp']
  command=[compiler(),'build-exe',sources[0],'--cache-dir','.dev-test-cache/obj3','-cflags','-O2','-DG6_RENDER_LEGACY_CONTROL='+str(int(control)),'--',*sources[1:],'-cflags','-O2','-std=c++17','-Wno-nontrivial-memaccess','--',*cpp,'-I.','-Ithird_party/imgui',*headers(),'-ld3d12','-ldxgi','-ldxguid','-lkernel32','-luser32','-lgdi32','-L'+str(sdk()[0].parents[1]/'Lib'/sdk()[0].name/'um/x64'),'-ld3dcompiler','-ldwmapi','-lc++','-lc','-O','ReleaseSafe','-target','x86_64-windows-gnu','-mcpu=baseline','-femit-bin=zig-out/bin/render_consumer.exe']
- w.build('render-consumer',sources+cpp,['zig-out/bin/render_consumer.exe'],command)
- return dest/'render_consumer.exe',w
+ # P4's matched control uses the P3 blocking policy with common telemetry.
+ # Physics, shaders and renderer bindings are identical in both arms.
+ command.insert(command.index('--'),'-DG6_P3_BLOCKING_CONTROL='+str(int(blocking)))
+ name='p3_render_consumer' if blocking else 'render_consumer'
+ command[-1]='-femit-bin=zig-out/bin/'+name+'.exe'
+ w.build(name,sources+cpp,['zig-out/bin/'+name+'.exe'],command)
+ return dest/(name+'.exe'),w
