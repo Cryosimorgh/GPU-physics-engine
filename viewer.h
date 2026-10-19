@@ -15,6 +15,9 @@ typedef struct ViewerConfig {
 Viewer *viewer_open(StorageDevice*,const uint64_t*,Physics*,const ViewerConfig*);
 int viewer_run(Viewer*);
 void viewer_close(Viewer*);
+int viewer_try_close(Viewer**,uint32_t timeout_ms);
+int viewer_device_test(StorageDevice*,const uint64_t*,uint32_t,const char*);
+int viewer_device_recreated(StorageDevice*,const uint64_t*);
 StorageDevice *s_open_view(int debug,int direct);
 int viewer_request(Viewer*,ViewerConfig*);
 void viewer_rejected(Viewer*);

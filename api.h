@@ -17,13 +17,27 @@ typedef struct GP {
  ID3D12Fence *fence; HANDLE event; UINT64 frequency; HRESULT err_hr;
  char name[256]; UINT vendor, device_id; UINT64 dedicated, budget;
  UINT feature_level, shader_model; ID3D12InfoQueue *info;
+ UINT failed,removed,unfenced,test_signal_failures,test_wait_failures,test_close_failures;HRESULT first_error,removed_reason;
 } GP;
 typedef struct Slot {
  ID3D12CommandAllocator *allocator; ID3D12GraphicsCommandList *list;
  ID3D12QueryHeap *queries; ID3D12Resource *timestamps; ID3D12Resource *readback;
 } Slot;
 static inline void gp_release(void *p) { if(p) IUnknown_Release((IUnknown*)p); }
-static inline int gp_ok(GP *g, HRESULT hr) { g->err_hr=hr; return SUCCEEDED(hr); }
+static inline int gp_ok(GP *g,HRESULT hr){
+ if(FAILED(hr)){if(!g->failed)g->first_error=hr;g->failed=1;g->err_hr=hr;}return SUCCEEDED(hr);
+}
+static inline int gp_removed(GP *g){
+ if(!g->device)return 0;HRESULT hr=ID3D12Device_GetDeviceRemovedReason(g->device);
+ if(FAILED(hr)){g->removed=1;g->removed_reason=hr;gp_ok(g,hr);}return g->removed;
+}
+static inline int gp_poll(GP *g){gp_removed(g);return !g->failed;}
+static inline HRESULT gp_queue_signal(GP *g,ID3D12CommandQueue *q,ID3D12Fence *f,UINT64 v){
+ HRESULT hr;if(g->test_signal_failures){if(g->test_signal_failures!=UINT32_MAX)g->test_signal_failures--;hr=E_FAIL;}else hr=ID3D12CommandQueue_Signal(q,f,v);gp_ok(g,hr);gp_removed(g);return hr;
+}
+static inline HRESULT gp_queue_wait(GP *g,ID3D12CommandQueue *q,ID3D12Fence *f,UINT64 v){
+ if(!gp_poll(g))return g->first_error;HRESULT hr=ID3D12CommandQueue_Wait(q,f,v);gp_ok(g,hr);return hr;
+}
 static inline void gp_destroy(GP *g) {
  gp_release(g->info); for(int i=0;i<3;i++) gp_release(g->pso[i]);
  gp_release(g->root); gp_release(g->fence); gp_release(g->queue);
@@ -74,7 +88,7 @@ static inline int gp_init(GP *g, int requested, int debug) {
  if(debug&&!gp_ok(g,ID3D12Device_QueryInterface(g->device,&IID_ID3D12InfoQueue,(void**)&g->info)))return 0;
  return 1;
 }
-static inline ID3D12Resource *gp_buffer(GP *g, UINT64 bytes, int kind) {
+static inline ID3D12Resource *gp_buffer(GP *g, UINT64 bytes, int kind) {if(!gp_poll(g))return NULL;
  D3D12_HEAP_PROPERTIES heap={0};heap.Type=kind==0?D3D12_HEAP_TYPE_DEFAULT:kind==1?D3D12_HEAP_TYPE_UPLOAD:D3D12_HEAP_TYPE_READBACK;heap.CreationNodeMask=heap.VisibleNodeMask=1;
  D3D12_RESOURCE_DESC d={0};d.Dimension=D3D12_RESOURCE_DIMENSION_BUFFER;d.Width=bytes;d.Height=1;d.DepthOrArraySize=1;d.MipLevels=1;d.SampleDesc.Count=1;d.Layout=D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
  d.Flags=kind==0?D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS:D3D12_RESOURCE_FLAG_NONE;
@@ -97,19 +111,33 @@ static inline int slot_init(GP *g,Slot *s,UINT64 readback_bytes) {
  if(readback_bytes){s->readback=gp_buffer(g,readback_bytes,2);if(!s->readback)return 0;}
  return 1;
 }
-static inline int slot_reset(GP *g,Slot *s){if(!gp_ok(g,ID3D12CommandAllocator_Reset(s->allocator)))return 0;return gp_ok(g,ID3D12GraphicsCommandList_Reset(s->list,s->allocator,NULL));}
+static inline int slot_reset(GP *g,Slot *s){if(!gp_poll(g))return 0;if(!gp_ok(g,ID3D12CommandAllocator_Reset(s->allocator)))return 0;return gp_ok(g,ID3D12GraphicsCommandList_Reset(s->list,s->allocator,NULL));}
 static inline void gp_transition(Slot *s,ID3D12Resource *r,UINT before,UINT after){D3D12_RESOURCE_BARRIER b={0};b.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;b.Transition.pResource=r;b.Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;b.Transition.StateBefore=before;b.Transition.StateAfter=after;ID3D12GraphicsCommandList_ResourceBarrier(s->list,1,&b);}
 static inline void gp_barrier(Slot *s,ID3D12Resource *r){D3D12_RESOURCE_BARRIER b={0};b.Type=D3D12_RESOURCE_BARRIER_TYPE_UAV;b.UAV.pResource=r;ID3D12GraphicsCommandList_ResourceBarrier(s->list,1,&b);}
 static inline void gp_copy(Slot *s,ID3D12Resource *to,ID3D12Resource *from,UINT64 bytes){ID3D12GraphicsCommandList_CopyBufferRegion(s->list,to,0,from,0,bytes);}
-static inline void *gp_map(GP *g,ID3D12Resource *r,size_t bytes){void *p=NULL;D3D12_RANGE range={0,bytes};if(!gp_ok(g,ID3D12Resource_Map(r,0,&range,&p)))return NULL;return p;}
+static inline void *gp_map(GP *g,ID3D12Resource *r,size_t bytes){if(!gp_poll(g))return NULL;void *p=NULL;D3D12_RANGE range={0,bytes};if(!gp_ok(g,ID3D12Resource_Map(r,0,&range,&p)))return NULL;return p;}
 static inline void gp_unmap(ID3D12Resource *r,size_t written){D3D12_RANGE range={0,written};ID3D12Resource_Unmap(r,0,&range);}
 static inline void gp_bind(GP *g,Slot *s,ID3D12Resource *a,ID3D12Resource *b,ID3D12Resource *c,UINT n,UINT neighbors,float dt){UINT config[4]={n,neighbors,0,0};memcpy(&config[2],&dt,4);ID3D12GraphicsCommandList_SetComputeRootSignature(s->list,g->root);ID3D12GraphicsCommandList_SetComputeRootUnorderedAccessView(s->list,0,ID3D12Resource_GetGPUVirtualAddress(a));ID3D12GraphicsCommandList_SetComputeRootUnorderedAccessView(s->list,1,ID3D12Resource_GetGPUVirtualAddress(b));ID3D12GraphicsCommandList_SetComputeRootUnorderedAccessView(s->list,2,ID3D12Resource_GetGPUVirtualAddress(c));ID3D12GraphicsCommandList_SetComputeRoot32BitConstants(s->list,3,4,config,0);}
 static inline void gp_dispatch(GP *g,Slot *s,UINT pass,UINT count){ID3D12GraphicsCommandList_SetPipelineState(s->list,g->pso[pass]);ID3D12GraphicsCommandList_Dispatch(s->list,(count+255)/256,1,1);}
 static inline void gp_stamp(Slot *s,UINT i){ID3D12GraphicsCommandList_EndQuery(s->list,s->queries,D3D12_QUERY_TYPE_TIMESTAMP,i);}
 static inline void gp_resolve(Slot *s){ID3D12GraphicsCommandList_ResolveQueryData(s->list,s->queries,D3D12_QUERY_TYPE_TIMESTAMP,0,2,s->timestamps,0);}
-static inline int gp_submit(GP *g,Slot *s,UINT64 value){if(!gp_ok(g,ID3D12GraphicsCommandList_Close(s->list)))return 0;ID3D12CommandList *lists[]={(ID3D12CommandList*)s->list};ID3D12CommandQueue_ExecuteCommandLists(g->queue,1,lists);HRESULT hr=ID3D12CommandQueue_Signal(g->queue,g->fence,value);if(!gp_ok(g,hr)){fprintf(stderr,"Queue Signal failed after Execute; fail-stop without releasing GPU-owned resources (0x%08lx).\n",(unsigned long)hr);ExitProcess(3);}return 1;}
-static inline UINT64 gp_completed(GP *g){return ID3D12Fence_GetCompletedValue(g->fence);}
-static inline int gp_wait(GP *g,UINT64 value){UINT64 v=gp_completed(g);if(v==UINT64_MAX){g->err_hr=ID3D12Device_GetDeviceRemovedReason(g->device);return 0;}if(v>=value)return 1;if(!gp_ok(g,ID3D12Fence_SetEventOnCompletion(g->fence,value,g->event)))return 0;DWORD result=WaitForSingleObject(g->event,30000);if(result!=WAIT_OBJECT_0){g->err_hr=result==WAIT_TIMEOUT?HRESULT_FROM_WIN32(WAIT_TIMEOUT):HRESULT_FROM_WIN32(GetLastError());return 0;}return gp_ok(g,ID3D12Device_GetDeviceRemovedReason(g->device));}
+static inline int gp_submit(GP *g,Slot *s,UINT64 value){
+ if(!gp_poll(g))return 0;if(g->test_close_failures){g->test_close_failures--;return gp_ok(g,E_FAIL);}
+ if(!gp_ok(g,ID3D12GraphicsCommandList_Close(s->list)))return 0;
+ g->unfenced=1;ID3D12CommandList *lists[]={(ID3D12CommandList*)s->list};ID3D12CommandQueue_ExecuteCommandLists(g->queue,1,lists);
+ if(FAILED(gp_queue_signal(g,g->queue,g->fence,value)))return 0;g->unfenced=0;return gp_poll(g);
+}
+static inline UINT64 gp_completed(GP *g){
+ if(!g->fence)return 0;UINT64 v=ID3D12Fence_GetCompletedValue(g->fence);if(v==UINT64_MAX){if(!gp_removed(g))gp_ok(g,E_FAIL);}return v;
+}
+static inline int gp_wait_for(GP *g,UINT64 value,DWORD timeout){
+ if(timeout>30000)timeout=30000;UINT64 v=gp_completed(g);if(v==UINT64_MAX||gp_removed(g))return 0;if(v>=value)return 1;
+ if(g->test_wait_failures){g->test_wait_failures--;return gp_ok(g,HRESULT_FROM_WIN32(WAIT_TIMEOUT));}
+ ResetEvent(g->event);if(!gp_ok(g,ID3D12Fence_SetEventOnCompletion(g->fence,value,g->event)))return 0;
+ DWORD result=WaitForSingleObject(g->event,timeout);if(result!=WAIT_OBJECT_0)return gp_ok(g,HRESULT_FROM_WIN32(result==WAIT_TIMEOUT?WAIT_TIMEOUT:GetLastError()));
+ v=gp_completed(g);if(v==UINT64_MAX||gp_removed(g))return 0;if(v<value)return gp_ok(g,E_FAIL);return 1;
+}
+static inline int gp_wait(GP *g,UINT64 value){return gp_poll(g)&&gp_wait_for(g,value,30000);}
 static inline UINT64 gp_validation_errors(GP *g){if(!g->info)return 0;UINT64 n=ID3D12InfoQueue_GetNumStoredMessagesAllowedByRetrievalFilter(g->info),bad=0;for(UINT64 i=0;i<n;i++){SIZE_T len=0;ID3D12InfoQueue_GetMessage(g->info,i,NULL,&len);D3D12_MESSAGE *m=(D3D12_MESSAGE*)HeapAlloc(GetProcessHeap(),0,len);if(m){if(SUCCEEDED(ID3D12InfoQueue_GetMessage(g->info,i,m,&len))&&(m->Severity==D3D12_MESSAGE_SEVERITY_ERROR||m->Severity==D3D12_MESSAGE_SEVERITY_CORRUPTION)){fprintf(stderr,"D3D12 validation: %s\n",m->pDescription);bad++;}HeapFree(GetProcessHeap(),0,m);}}return bad;}
 static inline UINT64 gp_clock(void){LARGE_INTEGER t;QueryPerformanceCounter(&t);return t.QuadPart;}
 static inline UINT64 gp_clock_frequency(void){LARGE_INTEGER t;QueryPerformanceFrequency(&t);return t.QuadPart;}
@@ -131,7 +159,7 @@ static inline int p2_remove(GP *g){ID3D12Device5 *d=NULL;if(FAILED(ID3D12Device_
 
 static inline UINT64 p2_cpu_time(void){FILETIME c,e,k,u;GetProcessTimes(GetCurrentProcess(),&c,&e,&k,&u);return (((UINT64)k.dwHighDateTime<<32)|k.dwLowDateTime)+(((UINT64)u.dwHighDateTime<<32)|u.dwLowDateTime);}
 
-static inline int p2_submit(GP *g,Slot *s,UINT64 value,UINT64 *submitted){if(!gp_ok(g,ID3D12GraphicsCommandList_Close(s->list)))return 0;ID3D12CommandList *list=(ID3D12CommandList*)s->list;*submitted=gp_clock();ID3D12CommandQueue_ExecuteCommandLists(g->queue,1,&list);if(!gp_ok(g,ID3D12CommandQueue_Signal(g->queue,g->fence,value)))ExitProcess(3);return 1;}
+static inline int p2_submit(GP *g,Slot *s,UINT64 value,UINT64 *submitted){*submitted=gp_clock();return gp_submit(g,s,value);}
 
 static inline ID3D12CommandSignature *p3_signature(GP *g){D3D12_INDIRECT_ARGUMENT_DESC arg={0};arg.Type=D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH;D3D12_COMMAND_SIGNATURE_DESC desc={0};desc.ByteStride=12;desc.NumArgumentDescs=1;desc.pArgumentDescs=&arg;ID3D12CommandSignature *out=NULL;if(!gp_ok(g,ID3D12Device_CreateCommandSignature(g->device,&desc,NULL,&IID_ID3D12CommandSignature,(void**)&out)))return NULL;return out;}
 static inline void p3_indirect(Slot *s,ID3D12PipelineState *p,ID3D12CommandSignature *sig,ID3D12Resource *args){ID3D12GraphicsCommandList_SetPipelineState(s->list,p);ID3D12GraphicsCommandList_ExecuteIndirect(s->list,sig,1,args,0,args,12);}

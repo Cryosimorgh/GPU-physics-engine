@@ -1,5 +1,5 @@
 int s_resource_available(StorageDevice *s,uint64_t h,uint32_t access){
- Buffer *b=buffer(s,h);return b&&!b->retired&&access&&!(access&~3u)&&!b->write_claims&&(!(access&2)||!b->read_claims);
+ Buffer *b=buffer(s,h);return s_active(s)&&b&&!b->retired&&access&&!(access&~3u)&&!b->write_claims&&(!(access&2)||!b->read_claims);
 }
 int s_resource_claim(StorageDevice *s,uint64_t h,uint32_t access){
  Buffer *b=buffer(s,h);if(!s_resource_available(s,h,access)||!drained(s,b)||(s->recording&&b->used)||b->read_claims==UINT32_MAX)return 0;

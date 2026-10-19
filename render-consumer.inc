@@ -29,11 +29,11 @@ static int vconsumer_prepare(Viewer *v,VFrame *f){
  f->snapshot_age=next-f->generation;return 1;
 }
 static int vconsumer_submit(Viewer *v,VFrame *f,uint64_t fence){
- if(G6_RENDER_LEGACY_CONTROL)return SUCCEEDED(ID3D12CommandQueue_Wait(v->graphics_queue,v->d->g.fence,f->cf));
+ if(G6_RENDER_LEGACY_CONTROL)return SUCCEEDED(gp_queue_wait(&v->d->g,v->graphics_queue,v->d->g.fence,f->cf));
  if(!ph_work_submit(v->p,&f->consumer,v->graphics_queue,v->graphics_fence,fence))return 0;
  // Always express readiness on the consuming queue, even when CPU acceptance
  // has already observed completion. This remains correct across queue modes.
- if(FAILED(ID3D12CommandQueue_Wait(v->graphics_queue,v->d->g.fence,f->consumer_info.ready_fence))){ph_work_fail(v->p,&f->consumer);return 0;}
+ if(FAILED(gp_queue_wait(&v->d->g,v->graphics_queue,v->d->g.fence,f->consumer_info.ready_fence))){ph_work_fail(v->p,&f->consumer);return 0;}
  f->ready_waits++;return 1;
 }
 static int vconsumer_release(Viewer *v,VFrame *f,int failure){
