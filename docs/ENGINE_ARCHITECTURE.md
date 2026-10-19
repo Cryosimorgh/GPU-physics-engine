@@ -4,7 +4,7 @@
 **Record date:** 2026-10-19
 **Document type:** Living engineering record  
 **Style:** Clear technical English, based on ASD-STE100 principles without strict controlled-language limits  
-**Status:** Experimental GPU physics engine. G5 is **DEFERRED / NOT QUALIFIED**. G6 and production release remain **NOT QUALIFIED**. P4 is integrated as an explicit option after G6-P5 headless validation; matching-tick rendering remains the default.
+**Status:** Experimental GPU physics engine. G5 is **DEFERRED / NOT QUALIFIED**. G6 and production release remain **NOT QUALIFIED**. P4 is integrated as an explicit option after G6-P5 headless validation; matching-tick rendering remains the default. P8a localizes the pool rejection to FP32/FP64 rail-target disagreement; the correction is not applied.
 
 > **Update rule:** Update this document in the same change that closes, rejects, or reopens a development breakpoint. Keep prior results and their limitations. Do not turn a local experiment into a released feature by changing its status here.
 
@@ -1011,6 +1011,65 @@ Finite observed maxima and fixed work/capacity bounds do **not** establish stati
 
 **Independent uploaded ZIP/GitHub audit (2026-10-19):** The uploaded `G6-P8-Sustained-Physics-20261019.zip` (42 entries) passes CRC and **41/41** manifest SHA-256 file checks; there are no unlisted entries. The included offline handoff verifier was independently executed and returned `PASS 41 file hashes; 5788 ticks reconciled; pool FAIL preserved, distributed PASS scoped; G6 NOT QUALIFIED`. All **seven** source/document Git blobs in the archive independently match the pushed isolated branch revision `961e32ebe10746cf9d8635c9b169769d7237fc5c`, parent `b4754a1606c2e7d3ca42f92c0d5b462b82544593`; it is **not merged** into primary branch production source. Independently recounted the raw JSONL: **4,073** pool attempts (**4,072 accepted + one unexpected error-32 rejection**), **884/884** medium accepted, **831/831** large accepted; **5,788 raw TICK records total / 5,787 accepted / one unexpected rejection**, plus **two distinct expected post-session injected rejection probes** in the passing distributed runs. The failed pool tick `tick=4072` reports **2 contacts, one 2-body island, max 19 per-island solver iterations, no publication, rollback hash identical to previous accepted state**; nine rest-gated cue shots occurred before the failure. All 30-second distributed wall sessions have stable committed allocation and safe cleanup, while the pool stops after **3.161 seconds wall time** despite having advanced **31.8125 seconds simulated time**; this is a correctness failure, not a duration pass. Independently checked raw CPU submit/record p50/p95/p99 nearest-rank quantiles for all three cases against the corrected results: **18/18 values exact**. Both distributed cases preserve the mandatory GPU checks and use an **independent full-contact CPU verification every tick**; pool independent KKT is explicitly unavailable (the default empty verifier payload is not zero residual). **No independent Windows GPU execution** was performed here, and reported preservation of 354 original tracked hashes/dirty status is developer evidence. Runtime allocation counters are not a census of native D3D12 allocations. The rejected tick's flag `32` is a **shared** validation code for KKT/impulse/position/penetration paths; the precise predicate is **not recovered** from this archive. This audit **does not** turn the 8,192-disk 30-wall-second run at **27.68 verification-inclusive accepted ticks/s** into a real-time, sustained-latency or general-topology pass; GPU tick maxima **58.27 ms medium** and **220.17 ms large** and the evolving 5-second windows prohibit that conclusion. P7 GPU-02 and G5 remain deferred/unverified as previously decided.
 
+### G6-P8a pool rejection localization — DIAGNOSIS VERIFIED / NOT FIXED (2026-10-19)
+
+**Base and limits:** Start at current main `16a270ed3217ae0e4d2fc96f9ba6d0e8bf8955e6`; copy only the P8 `physics_main.zig`/`sustained_physics.zig` measurement branch from `g6-p8-sustained-qualification-20261019`. Preserve the complete current-main architecture record, the original workspace's 353 tracked hashes and dirty status, and original P8 evidence. No G5 experiment, solver/default/equation/tolerance change, GUI or display probe is performed. **G5 remains DEFERRED / NOT QUALIFIED; G6 remains NOT QUALIFIED; GPU-02 remains UNVERIFIED.**
+
+#### Complete shared-error audit and failure-only capture
+
+There are **six** direct `fail(32)` sites in the physics error domain, split into nine predicate subcodes. The earlier count of seven sites was imprecise; the source/contract test fixes the count. `spatial.hlsl` has two separate local scatter overflow `fail(32)` sites; `ph_append` forwards these as `1 | (spatial_error << 16)` (32 becomes 0x00200001), so they cannot produce the observed plain physics error 32. No untraced plain-32 solver path was found.
+
+| Subcode | Predicate / failure path | Physics source |
+|---|---|---|
+| 1 | Normal projected KKT residual exceeds tolerance | `physics.hlsl:143` |
+| 2 | Tangent projected KKT residual exceeds tolerance | Same original compound contact check |
+| 3 | Negative or nonfinite normal impulse | Same contact check |
+| 4 | Tangent impulse violates friction projection | Same contact check |
+| 5 | Per-body impulse reconstruction exceeds bound; captures axis | `physics.hlsl:161` |
+| 6 | Coincident pool positions during correction | `physics.hlsl:184` |
+| 7 | Position correction fails its existing 64-pass criterion | `physics.hlsl:193` |
+| 8 | Correction displacement exceeds existing cap | `physics.hlsl:196` |
+| 9 | Post-correction candidate pair penetration exceeds bound | `physics.hlsl:198` |
+
+`pool-failure-diagnostic.hlsl` adds a first-writer CAS latch and a 64-byte payload: subcode, tick, body/contact identifiers, detail/axis, **binary64** value, threshold and two auxiliary values, plus two raw words. The record uses existing spare pool bytes **448–511**, immediately after the Y-position array and below the 512-byte guard boundary. The generated shared `pool-schema.json`/`pool-layout.h` contract is version 2; the extension stays **768 bytes**, with no new GPU allocation or changed existing offsets. `ph_guards` initializes the latch once. Only an already failing predicate writes its payload, before the unchanged `fail(32)` call; no per-tick clearing or accepted-tick forensic readback is added. The atomic winner is the first recorded GPU failure, not a promised lowest contact ID or serialized lane order.
+
+Diagnostics require `G6_POOL_FAILURE_DIAGNOSTICS=1` on the five affected shader entries. The default is **0**. All **85 default DXIL files are byte-identical to the unchanged control**, demonstrating that the default diagnostic path compiles out. The runner temporarily installs the five instrumented entries, records two repeats and restores verified default shaders in `finally`. The existing P8 test host saves raw source/trial/metadata/contact buffers **only after a failed, fence-complete tick**; normal accepted ticks retain the P8 path. Relevant contact inputs, impulses, body states and rolling state are retained for independent offline arithmetic.
+
+#### Reproduction and exact predicate
+
+One unchanged control and two serialized diagnostic repeats all reproduce zero-based attempt **4,072**, after the same nine rest-gated ±1.5-m/s cue shots at ticks **0, 288, 812, 1277, 1818, 2245, 2806, 3248, 3822**. Every one of the **4,073** recorded accepted/rejected state hashes in each run matches the original P8 run. Six final CPU diagnostic/layout/coverage/witness tests pass. The scenario processes deliberately exit 1 because they reproduce the existing rejected tick; the diagnostic verification is PASS and never relabels this as a physics pass.
+
+Both diagnostic records identify **subcode 1, normal contact KKT residual**, contact record **1**, stable ball ID **7**, generation **1**, versus right-wall ID **17 = N+1**. The other contact is ball 7 versus ball 8. Trial body 7 is at `(2.5110435485839844, 0.6317485570907593)` with velocity `(0.048828125, -0.11729887127876282)` and yaw `4.104947566986084`. Its free velocity/yaw are all exactly zero. Normal/tangent impulses are `0.2066767964114747` / `-0.012403889412663788`; the friction bound is `0.03100152069361091`. No invalid-input rejection is present. The contact check precedes body checks and positional correction (`physics.c:91`); the position stage is stopped after this failure, so it did not originate in position correction or pair penetration.
+
+| Independently reconstructed quantity | Exact captured/recomputed value |
+|---|---:|
+| FP32 table-width input | 2.5399999618530273 |
+| FP32 radius input | 0.028574999421834946 |
+| `append()` rail gap, FP32 intermediate subtraction (`physics.hlsl:86`) | 0.0003814697265625 |
+| `geometry()` rail gap, FP64 subtraction (`physics.hlsl:141`) | 0.00038141384720802307 |
+| Difference in gap | 5.587935447692871e-08 |
+| Stored solver target from FP32 gap (`physics.hlsl:87`) | -0.048828125 |
+| Validator target from FP64 gap | -0.04882097244262695 |
+| Actual relative normal velocity | -0.048828125 |
+| Residual against stored solver target | **0 exactly** |
+| Residual against independently reconstructed target | **7.152557373046875e-06** |
+| Unchanged KKT threshold | **7.271219886650902e-07** |
+| Residual / threshold | **9.836805219132655** |
+
+The input is finite and geometrically valid, with positive initial rail gap. With zero free normal velocity, restitution is not the active target branch: the separation/dt target applies. The solver exactly satisfies its stored target. `append()` first rounds `(width - radius)` in FP32, then subtracts X; `geometry()` performs those subtractions in FP64 from the same stored FP32 inputs. The gap difference divided by dt=1/128 is **exactly the measured normal residual**. Independent offline binary32 rounding plus binary64 reconstruction matches the GPU value and limit bit-for-bit. This proves a **pool rail target representation inconsistency**, not a guessed convergence, bad-input, or position-correction problem. The rejected tick reports max 19 solver iterations, below 4,096; increasing iterations cannot make two inconsistent targets equal. No solver optimization is justified by this failure.
+
+#### State integrity and decision
+
+All three replays preserve the last accepted state hash:
+
+`1d219f358287d6dc0853c59c74805d8ca4a1c90fd5ea995f7287d4c256919d39`
+
+It covers the full capacity-32 SoA including padding and the G1 source guard, plus the retained current rolling arrays. Publication reports **zero** and the last accepted/rejected hashes are identical. The binary source dump uses `ph_read(0)`, which excludes the G1 source guard; offline verification reconstructs the declared 64 `0xbaadc0de` guard words and requires the full digest to equal **both live hashes**, without pretending that those guard bytes were directly dumped. Working trial/contact/metadata bytes are allowed to change; they are not part of committed simulation state. Each cleanup returns to 65,536 context bytes, zero retired bytes and zero reported validation errors. Default shaders are restored. Native debug-layer validation was not enabled, and no performance conclusion is drawn from diagnostic timings.
+
+**Decision: LOCALIZATION PASS; ORIGINAL PHYSICS FAILURE REMAINS OPEN.** Stop GPU reproduction after these two diagnostic repeats. Do not suppress subcode 1, widen KKT tolerance, accept the rejected state, alter solver work limits or retry G5 policies. The smallest supported correction to evaluate **in a separate follow-up** is to construct each pool rail gap in binary64 from the stored FP32 inputs before `poolTarget`, consistently with `geometry()`, then retain the existing final target storage and acceptance criteria. That is an arithmetic-consistency proposal, **not an applied fix**; all four rail directions, near-boundary values, impacts/persistent contacts, energy, rolling rollback and the nine-shot sequence still need targeted validation before retention. No solver mathematics was changed in this task.
+
+**Reproduction/evidence:** Fresh isolated checkout at this breakpoint. Record the unchanged control with the P8 harness before applying shader instrumentation (`python run_p8a_control.py`); then use the current source `python run_g6_p8a.py` for verified/cached compilation and two serialized diagnostic runs. `python analyze_pool_fault.py`, `python -m unittest test_pool_diagnostic -v` and `python verify_g6_p8a.py` are offline only. `G6-P8a-Pool-Validation-20261019.zip` includes exact phased commands, original/control/diagnostic JSONL, source/trial/meta/contact dumps, decoded JSON/CSV, complete architecture, source/tool/host/shader hashes and a read-only verifier. The existing control must remain the pre-instrumentation reference; the reproduction guide explains how to create it from the recorded main base plus the P8 harness. No broad campaign or additional GPU run follows localization.
+
 ## 15. Breakpoints and qualification record
 
 A **breakpoint** is a formal gate close, a gate reopen, a changed system contract, a release candidate, or a validated performance decision. An ordinary small code edit is **not** a breakpoint.
@@ -1023,7 +1082,7 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO; P7 real-window application PASS; GPU-02 UNVERIFIED** | Four matched windowed collision-bearing runs plus two controlled API-removal cases pass in recorded local evidence. PresentMon 2.6.0 ETW capture denied (exit 6); zero displayed image/latency samples and no OS scanout correlation. |
 | **G5** | Large islands, convergence, robust solver performance | **DEFERRED — CURRENT WORKSTREAM CLOSED; NOT QUALIFIED** | Algorithmic Anderson candidate rejected: eight formerly converging configurations lost convergence. Retained shader restored; large connected-island latency/convergence remains an accepted *development risk*, not a gate pass. Restart only on a demonstrated workload need or a separately authorized architecture prototype. |
-| **G6** | Reproduce applicable gates, approve an engine foundation | **P1–P6 integrated; P7 DISPLAY UNVERIFIED; P8 LIMITED / SMALL POOL FAIL; formal G6 NOT QUALIFIED** | P8 isolated branch passed two 30-wall-second distributed contact scenes (1,024 and 8,192 disks, max 16-body islands), but 16-ball pool rejected tick 4,072 with shared flag 32; rollback was correct. Large-run GPU tick max 220.17 ms; no real-time/sustained/general topology qualification. |
+| **G6** | Reproduce applicable gates, approve an engine foundation | **P1–P6 integrated; P7 DISPLAY UNVERIFIED; P8 SMALL POOL FAIL; P8a DIAGNOSED / NOT FIXED; formal G6 NOT QUALIFIED** | P8 isolated branch passed two 30-wall-second distributed contact scenes (1,024 and 8,192 disks, max 16-body islands), but 16-ball pool rejected tick 4,072. P8a verifies normal KKT subcode 1 caused by inconsistent FP32/FP64 rail-gap targets; rollback is correct and the precision correction is not applied. Large-run GPU tick max 220.17 ms; no real-time/sustained/general topology qualification. |
 
 ### Current G5 decision (2026-10-19)
 
@@ -1073,6 +1132,10 @@ Sticky failed contexts, checked bounded teardown and explicit new-scene recreati
 
 **Evidence:** User-uploaded `G6-P8-Sustained-Physics-20261019.zip`; developer Windows commit `961e32ebe10746cf9d8635c9b169769d7237fc5c`. All 41 file hashes, seven published Git blobs, independent offline handoff checker, raw per-tick counters, and CPU timing quantiles verified. No Windows GPU commands independently rerun during this documentation review.
 
+### Current G6-P8a decision (2026-10-19)
+
+One unchanged control plus two diagnostic nine-shot replays reproduce attempt 4,072, identical committed state hashes, normal KKT subcode 1 on ball 7/right rail. Offline arithmetic proves that FP32 append gap and FP64 acceptance gap create different targets; the solver satisfies its stored target exactly. Failure isolation and rollback verification PASS, but the existing physics failure remains. Default diagnostics compile out to 85 byte-identical DXIL files. Propose consistent binary64 pool rail-gap construction as the next targeted correction; do not apply it silently, loosen validation, optimize G5, or qualify G6. G5 deferred, GPU-02 unverified, G6 not qualified.
+
 ## 16. Risks and work still required
 
 1. **State publication and freshness:** P1–P6 source is integrated; P7 real-window testing on an isolated branch records correct command acknowledgment and fence ownership in both rendering modes. Blocking remains default; opt-in nonblocking gives accepted-state snapshot age **p95 two ticks** in normal actual-window tests, versus zero blocking. Measure real display age only when external correlated events exist; do not infer it from a successful Present.
@@ -1083,6 +1146,8 @@ Sticky failed contexts, checked bounded teardown and explicit new-scene recreati
 6. **Evidence and deterministic replay:** The isolated policy-4 baseline has been recovered with all 25 source hashes and a successful 80-run behavioral sweep. Historical and rebuilt CLI hashes differ and the comparison reports 156 numerical and 23 color-count differences. Track compiler/link inputs and exact revision, shader hashes, fixtures and GPU/driver context; do not claim byte-identical replay.
 7. **G6 sustained execution and release envelope:** P8 proves 30-wall-second **functional** distributed contact tests up to 8,192 disks with max 16-body islands, but only 6.49 simulated seconds in its largest case, 27.68 verification-inclusive accepted ticks/s, **220.17-ms** worst GPU tick, numerous fixed-step budget misses and progressive GPU latency growth. It excludes production-only throughput and hard 128-Hz deadlines; the 16-ball pool has one unexpected accepted-state validation rejection. P7 GPU-02, P6 physical faults, GUI/checkpoint recovery and a production public host envelope remain unqualified; G5 stays deferred.
 8. **16-ball pool validator localization:** After nine rest-gated shots, P8's 16-ball pool gets GPU shared validation flag `32` on attempt 4,072 (2 contacts, 2-body island) and correctly publishes no new state. A full pre/post-state hash verifies rollback. The shared flag covers multiple KKT/impulse/position/penetration predicates; capture an exact failure subcode and local state before considering any physics change. Existing analytic pool tests passing do not override this sustained scene failure.
+
+9. **Pool precision mismatch / P8a:** The earlier missing subcode is now captured: normal KKT check, ball 7/right rail, residual 9.8368 times tolerance. FP32 rail-gap construction disagrees with FP64 acceptance. The failure is localized and safe rollback proven; correction remains proposed, not implemented. Follow-up should align arithmetic construction and acceptance while preserving equations/tolerances and cover all rail orientations. This does not reopen G5 or close sustained reliability.
 
 ## 17. How to update this living document
 
@@ -1117,6 +1182,7 @@ Next action:
 
 | Date | Breakpoint | Record update |
 |---|---|---|
+| 2026-10-19 | G6-P8a shared pool validation failure — LOCALIZED / NOT FIXED | Control + two diagnostic repeats reproduce tick 4,072, all 4,073 state hashes and nine shots match P8. Subcode 1 identifies ball 7/right rail normal KKT; independently reproduced FP32/FP64 gap-target difference equals residual, 9.8368× limit. No solver/math fix; zero extra GPU allocation, default 85 DXIL byte-identical and restored. Six CPU tests and rollback/cleanup checks pass. G5 deferred, G6 not qualified. |
 | 2026-10-19 | G6-P8 sustained physics external audit — LIMITED / POOL FAIL | Independently verified 41 ZIP checks, 7 pushed Git blobs and 5,788 raw attempts (5,787 accepted, one shared-error-32 pool rejection). Medium/large 30-wall-second runs accept 884/831 ticks (1,024/8,192 disks in max-16-body islands), with stable tracked memory and checked rollback, but CPU-oracle overhead, GPU drift and 220.17-ms worst tick prohibit real-time claims. Pool 9-shot sequence fails at attempt 4,072; exact subvalidator unknown. G5 deferred, GPU-02 unverified, G6 not qualified. |
 | 2026-10-19 | G6-P7 real viewer/display attempt — LOCAL APPLICATION PASS / GPU-02 UNVERIFIED | Verified archive CRC, 78 hashes, 13 source blobs matching isolated Git branch, six archived actual-window cases and all 16 pooled raw quantile groups. Four normal ABBA cases exercise 298 frames/286 ticks each with 137 contact-bearing ticks, and two controlled API removal cases shut down safely. Actual local HDMI/120 Hz verified but PresentMon ETW access denied (exit 6), zero OS displayed-image/latency samples. P7 source not promoted; G5 deferred, G6 not qualified. |
 | 2026-10-19 | G6-P6 external handoff audit — VERIFIED / NOT G6 QUALIFIED | Verified all 210 ZIP payload hashes and the offline verifier, 16 fresh PASS recorded processes, 8 lifecycle cases (2 controlled real D3D12 API removals), 18 published source/blob IDs and 85 unchanged DXIL outputs. Original workspace preservation is developer-reported; no reviewer Windows execution or physical hardware/TDR recovery. G5 deferred, G6 not qualified. |

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "entities": 16,
   "table_width": 2.54,
   "table_height": 1.27,
@@ -29,5 +29,7 @@
   "diagnostic_offset": 292,
   "snapshot_persistent_bytes": 160,
   "snapshot_command_offset": 160,
-  "snapshot_bytes": 164
+  "snapshot_bytes": 164,
+  "failure_diagnostic_offset": 448,
+  "failure_diagnostic_bytes": 64
 }
