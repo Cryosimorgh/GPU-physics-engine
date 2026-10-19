@@ -10,7 +10,7 @@ typedef struct PhWorkInfo {
  uint32_t generation,tick,status,queue_kind,dependency_count,completion_ready;
  PhWorkDependency dependencies[PH_WORK_DEPS];
 } PhWorkInfo;
-// A task reads one leased immutable generation and at most three separately
+// A task reads one leased immutable generation and at most five separately
 // owned resources. No work queue or allocator is created. Calls are CPU-owner
 // thread serialized. Register queue/fence BEFORE executing external GPU work.
 int ph_work_prepare(Physics*,const PhWorkDependency*,uint32_t,PhWorkHandle*);
