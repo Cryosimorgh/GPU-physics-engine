@@ -1,7 +1,7 @@
 # GPU Physics Engine — Technical Architecture and Development Record
 
 **Project:** [Cryosimorgh/GPU-physics-engine](https://github.com/Cryosimorgh/GPU-physics-engine)  
-**Record date:** 2026-10-18  
+**Record date:** 2026-10-19
 **Document type:** Living engineering record  
 **Style:** Clear technical English, based on ASD-STE100 principles without strict controlled-language limits  
 **Status:** Experimental GPU physics engine. G5 and production release are **not qualified**.
@@ -576,6 +576,10 @@ Validation has several levels:
 
 For routine physics work, use the **headless CLI**. The playable branch's `python dev_test.py` supports quick, affected-file, and full levels. Its build cache hashes the source dependency graph, compiler, options, and output artifacts; it must not trust timestamps alone.
 
+**Bounded deterministic measurement mode (2026-10-19):** `measurement-schedule.hlsl`, enabled only by `G5_DETERMINISTIC_MEASURE=1`, canonicalizes complete contact records and their FP64 impulse arrays by stable entity identity before rebuilding the graph. Serial member ranks, root-contact placement, and within-color ranges remove atomic placement variability. Existing greedy coloring and the solver shader remain unchanged. This mode admits fixture 0, flags 0/2, at most 1,024 bodies and 2,048 contacts, and one connected collision island. Additional newly discovered contacts after the first graph round and unsupported inputs fail explicitly before publication. It is a bounded measurement aid, not a new production scheduler. It uses existing buffers; linked lists are rebuilt immediately after sorting before their next use.
+
+`G5_MEASURE_TIMESTAMPS=1` brackets admission, member construction, contact scatter, and color ranges with eight extra timestamp queries inside the existing 64-query allocation. The normal build remains at 40 queries. The bracket sum includes original dispatch, UAV barriers, and bookkeeping; comparison with identically instrumented native scheduling estimates additional scheduling cost. Complete tick time includes this cost. No GPU-to-CPU synchronization was added between stages. Default-off C preprocessor tokens and all four affected default-off DXIL outputs match the retained control. The solver source hash remains `10c5ee6541c7799119a9578b304c51f8d3de3938e2221613894bc7fae75d5c24`.
+
 **G5 sweep method:** Run all specified topologies in one sequential CLI batch; write JSON/CSV evidence; show one compact summary. A two-sample quick sweep is exploratory. Do not treat its p95 as a stable tail-latency estimate.
 
 Screenshots and video belong to an explicit **graphics/UX** task or a release milestone. They are not necessary to prove headless solver correctness.
@@ -609,7 +613,7 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G2** | Spatial search and contacts | **Passed in historical scoped tests** | Hash selected; contact construction verified. |
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
-| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Body-cache experiment rejected as general default: 1,024-body chain 170.13→152.69 ms, but geometric-mean cost worsened 4.25%. Policy 4 still opt-in; production remains policy 1. |
+| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Bounded deterministic measurement mode verified locally; timing variation remains. Rejected optimization policies remain rejected. Policy 4 still opt-in; production remains policy 1. |
 | **G6** | Reproduce all gates, approve an engine foundation | **Not started / not authorized** | Requires G4/G5 closure and architecture proof. |
 
 ### Current G5 decision (2026-10-18)
@@ -622,6 +626,35 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 
 **Evidence reference:** `G5-Global-Solver-Cost-Handoff-20261018T090324676154Z.zip`, 2026-10-18. Submitted local evidence: 100 timing trials, 22 diagnostic probes, 22 unit tests, 50 verified summary rows. Source and test evidence were reviewed; Windows D3D12 execution was not independently rerun here.
 
+### G5 deterministic measurement decision (2026-10-19)
+
+**Decision: RETAIN MEASUREMENT MODE ONLY; G5 STILL OPEN.** Branch `g5-deterministic-measurement-20261019` preserves the retained snapshot-reuse/skipped-residual baseline. No solver equations, policies, thresholds, KKT criteria, iteration limits, or production defaults changed. The rejected early-restart patch was not reapplied. Original workspace status and 390 snapshotted file hashes remain identical.
+
+**Local evidence:** `dev-test-results/g5-deterministic-20261019T035548203177Z/results.json` and `summary.csv`, RTX 4070 Ti SUPER. One serialized headless batch executed 180 trials: eight deterministic policy-4 repeats per fixture, two native policy-4 references, and two deterministic repeats for each policy 0–3. The same CLI and fixed per-policy shader bytes were checked before and after execution. Independent audits verified complete fixture contacts, actual single-island size, conflict-free coloring, KKT, energy/momentum, impulse reconstruction, and rejection rollback. All deterministic schedule and FP64 work/published-result signatures were identical within each fixture/policy; iteration counts were constant. Of 160 deterministic trials, 150 converged. Ten expected nonconvergent attempts retained explicit failure and exact rollback: policy 0 chains 64/256/1,024 and policy 2 chains 256/1,024, two each. All 20 native references converged. Two additional unsupported-envelope trials (1,025 bodies and two islands) returned error 64, no publication, and byte-identical rollback. The initial 48 unit tests and five focused post-setup-fix tests passed.
+
+Policy-4 timings below are milliseconds, eight cold one-tick repeats. Schedule/native columns are separately bracketed stage medians (native has two samples). Total tick includes scheduling; different native arithmetic orders prevent treating its timing difference as an optimization result.
+
+| Fixture / bodies | Contacts | Iterations | Tick p50 | Schedule / native | Tick CV | Solver CV |
+|---|---:|---:|---:|---:|---:|---:|
+| Chain / 16 | 15 | 452 | 3.144 | 0.018 / 0.009 | 7.52% | 8.71% |
+| Chain / 64 | 63 | 367 | 2.855 | 0.049 / 0.009 | 12.78% | 9.46% |
+| Chain / 256 | 255 | 4,035 | 36.246 | 2.985 / 0.011 | 1.74% | 0.39% |
+| Chain / 1,024 | 1,023 | 4,024 | 194.935 | 46.954 / 0.017 | 2.11% | 1.79% |
+| Branching / 64 | 63 | 321 | 3.772 | 0.048 / 0.009 | 6.42% | 12.84% |
+| Branching / 256 | 255 | 1,194 | 19.115 | 3.764 / 0.011 | 4.30% | 2.22% |
+| Dense / 64 | 112 | 107 | 3.388 | 0.535 / 0.009 | 15.26% | 7.78% |
+| Dense / 256 | 480 | 417 | 19.715 | 9.182 / 0.011 | 18.57% | 4.32% |
+| Oblique / 64 | 112 | 287 | 5.809 | 0.077 / 0.011 | 9.23% | 8.74% |
+| Oblique / 256 | 480 | 1,016 | 37.972 | 10.282 / 0.013 | 10.57% | 2.11% |
+
+**Remaining uncertainty:** Canonical arithmetic is repeatable on this device/toolchain, not proven across hardware or compilers. GPU execution time remains variable; the 1,024-body solver spans 139.626–147.381 ms with identical 4,024 iterations. CPU record+submit medians span 3.279–3.443 ms across fixtures. Serial insertion-sort work depends on incoming atomic order even though its output is canonical; its cost is O(C²), measured separately, and unsuitable for production. Cold samples do not establish sustained timing, p99, or a thermal/clock cause. No cache/counter attribution is claimed. The next justified optimization target remains the unchanged FP64 color-pass solver; compare fixed arithmetic schedules and solver brackets, not schedule-construction time or random-order complete ticks. Multi-island and later-discovery replay remain outside this bounded tool's verified scope.
+
+**Reproduce:** `python measure_deterministic.py` uses the verified `dev_test.py` build cache and retained control-policy artifacts from `dev-test-results/g5-early-restart-*/results.json`. It builds one instrumented CLI and only four affected shaders for each scheduling arm, reuses other artifacts, serializes cases with timeouts, and writes raw exports plus JSON/CSV. The successful run reused its CLI after two setup-only failures (log-header comparison and pre-existing setup directory); no GPU cases were repeated. Preserved setup failure files, including the stale `failure.json`, are superseded by the successful `results.json`. This is not a standalone release/recovery package.
+
+**Previous handoff hash erratum:** The delivered `source/measure_repeatability.py` in `G5-Measurement-Repeatability-20261019.zip` hashes to `c4fb504149ef21d585e320da79cc5a7664462ebab3d76e8b8aa3b8917ef17643`, matching its `final-source-hashes.json`. Supplemental `preservation-and-aa-summary.json` incorrectly recorded `52c21a5af359967e4276a7a848282418bdd9c7deead3efba476035edbbf6dbed`. The old archive is preserved. Its initial execution-time helper hash remains **UNVERIFIED** because it was not recorded then. This batch records and verifies source/helper hashes before and after GPU execution; the machine-readable erratum is `dev-test-results/previous-handoff-hash-reconciliation.json`.
+
+G0–G4 statuses remain frozen; GPU-02 remains unverified, G5 unqualified, and G6 unauthorized.
+
 ## 16. Risks and work still required
 
 1. **Strict state isolation:** Replace per-body in-place publication with a proven completed-generation handoff. Measure any copy or memory cost.
@@ -631,6 +664,7 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 5. **Display verification:** Collect real local display evidence for GPU-02 when required. Do not confuse Present calls with scanout.
 6. **Evidence discipline:** Keep the exact source revision, shader hashes, fixtures, and GPU/driver context with measurements. Do not combine numbers from different scenarios into one speed claim.
 7. **Production integration:** G6 must define API stability, error handling, host integration, and long-running device-loss recovery before an engine rewrite is authorized.
+8. **Measurement scheduling:** Canonical schedules now separate arithmetic variability from runtime variability only inside the bounded measurement envelope. Sorting overhead and cold-run timing noise must not be reported as production solver cost or speedup.
 
 ## 17. How to update this living document
 
@@ -670,6 +704,7 @@ Next action:
 | 2026-10-18 | G5 bounded-restart candidate — CONDITIONAL | Reviewed 60 headless GPU runs and six diagnostics. Policy 3 converged in 20/20 local attempts, but 256/1,024-body chains and several branching/oblique networks suffered performance penalties. Production remains unchanged; G5 remains unqualified. |
 | 2026-10-18 | G5 residual-gated restart — OPT-IN RETAIN | Audited 80 short GPU timing runs, 10 trace checks and 17 reported sweep unit tests. Policy 4 converged in 20/20 and lowered aggregate GPU p50 sum by 13.5% relative to policy 3, but remained slow on large chains. Production policy 1 unchanged; G5 unqualified. |
 | 2026-10-18 | G5 shared-body-cache experiment — REJECT | Audited 100 CLI timing trials, 22 probes, 22 unit tests and the HLSL source. 1,024-body GPU p50 improved 170.13→152.69 ms, but aggregate geometric mean worsened 4.25%. Hardware counter attribution is unverified. Default remains cache-off; G5 open. |
+| 2026-10-19 | G5 deterministic measurement — BOUNDED PASS | One 180-trial headless batch plus two safe-envelope rejections: repeatable contact/color schedules, iterations and FP64 results for policies 0–4. Scheduling overhead measured separately; runtime variance remains. Production/solver unchanged; previous handoff hash reconciled with execution-time provenance still unverified. G5 remains open. |
 
 ---
 
