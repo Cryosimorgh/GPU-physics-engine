@@ -20,13 +20,14 @@
 enum {SCENE=41,GUARDS,CLEAR,PREPARE,ROUND,APPEND,WALLS,ADMIT,GRAPH_CLEAR,UNION,COMPRESS,COUNTS,SCAN,ADD,MEMBERS,SCATTER,ARGS,COLOR,COLOR_COUNTS,COLOR_RANGES,READY,SOLVE,CHECK_CONTACTS,CHECK_BODIES,CHECK_PAIRS,CHECK_GUARDS,PUBLISH,EXEC_CONFIG,RETRY,SCENE_ONE,SOURCE_EPOCH,POOL_POSITIONS};
 static const char *names[]={"ph_scene","ph_guards","ph_clear","ph_prepare","ph_round","ph_append","ph_walls","ph_admit_round","ph_graph_clear","ph_union","ph_compress","ph_contact_counts","ph_scan","ph_add","ph_members","ph_contact_scatter","ph_args","ph_color","ph_color_counts","ph_color_ranges","ph_ready","ph_solve","ph_check_contacts","ph_check_bodies","ph_check_pairs","ph_check_guards","ph_publish","ph_execution_config","ph_retry_admission","ph_scene_one","ph_source_epoch","ph_pool_positions"};
 typedef struct StateSlot {uint64_t buffer,serial,fence;uint32_t tick,epoch,generation,readers;int pending;} StateSlot;
-typedef struct StateLease {PhStateLease value;void *completion;uint64_t completion_value;} StateLease;
-struct Physics {StateSlot state[PH_STATE_SLOTS];StateLease leases[PH_STATE_LEASES];uint64_t state_context,state_serial,lease_nonce,state_committed,state_bytes;unsigned state_count;int accepted_slot,pending_slot,state_owner;StorageDevice *d;PhysicsConfig cfg;Spatial *sp;SpatialOutput output;uint64_t h[8],owned[6],bytes[6],commit[6],total;uint32_t k[16],tail,end;double allocation_us;int poisoned,has_tick;uint32_t last_tick,execution_mode,cell_mode,source_epoch,work_budget,quiet_ticks,cached_tick,header[G4_DESCRIPTOR_WORDS];int header_valid;double retry_blocking_us;};
+typedef struct StateLease {PhWorkDependency extra[PH_WORK_EXTRA];uint32_t extra_count,task_status,task_releasing,queue_kind;void *queue;PhStateLease value;void *completion;uint64_t completion_value;} StateLease;
+struct Physics {PhWorkInfo producer;StateSlot state[PH_STATE_SLOTS];StateLease leases[PH_STATE_LEASES];uint64_t state_context,state_serial,lease_nonce,state_committed,state_bytes;unsigned state_count;int accepted_slot,pending_slot,state_owner;StorageDevice *d;PhysicsConfig cfg;Spatial *sp;SpatialOutput output;uint64_t h[8],owned[6],bytes[6],commit[6],total;uint32_t k[16],tail,end;double allocation_us;int poisoned,has_tick;uint32_t last_tick,execution_mode,cell_mode,source_epoch,work_budget,quiet_ticks,cached_tick,header[G4_DESCRIPTOR_WORDS];int header_valid;double retry_blocking_us;};
 static int last_error;
 int ph_error(void){return last_error;}
 static int add(uint64_t a,uint64_t b,uint64_t *out){if(a>UINT64_MAX-b)return 0;*out=a+b;return 1;}
 static int mul(uint64_t a,uint64_t b,uint64_t *out){if(b&&a>UINT64_MAX/b)return 0;*out=a*b;return 1;}
 #include "state-publication.inc"
+#include "work-ownership.inc"
 static int bind(Physics *p){return s_bind(p->d,p->h,p->k);}
 static int dispatch(Physics *p,int pass,uint32_t count){uint32_t x,y;if(!s_dispatch_shape(count?count:1,1,&x,&y))return 0;p->k[6]=(p->k[6]&65535)|(x<<16);return bind(p)&&s_dispatch_grid(p->d,pass,x,y);}
 // Constant 15 is kick_slot during prediction, island_base during these
@@ -93,8 +94,9 @@ static int record_frame(Physics *p,uint32_t tick,PhysicsResult *r,uint64_t heade
 }
 int ph_record_frame(Physics *p,uint32_t tick,PhysicsResult *r,uint64_t header,uint64_t snapshot){
  if(!p||!r||p->poisoned||tick==UINT32_MAX||(p->has_tick&&tick!=p->last_tick+1)||!state_prepare(p,tick))return 0;
+ if(!producer_prepare(p,tick,header,snapshot)){p->state[p->pending_slot].pending=0;p->pending_slot=-1;last_error=62;return 0;}
  int slot=p->pending_slot;int ok=record_frame(p,tick,r,header,snapshot);
- p->state[slot].fence=s_fence(p->d);p->pending_slot=-1;
+ p->state[slot].fence=s_fence(p->d);p->pending_slot=-1;p->producer.completion_fence=s_fence(p->d);p->producer.status=ok?PH_WORK_SUBMITTED:PH_WORK_FAILED;
  if(!ok){s_abort(p->d);p->state[slot].pending=0;p->poisoned=1;}
  return ok;
 }

@@ -27,3 +27,4 @@ void sp_physics(Spatial*,uint64_t trial,uint64_t control,float dt,uint32_t polic
 int sp_g4_occupancy(Spatial*);
 
 int sp_g4_cell_mode(Spatial*,uint32_t);
+uint32_t sp_resources(Spatial*,uint64_t*,uint32_t);

@@ -4,7 +4,7 @@
 **Record date:** 2026-10-19
 **Document type:** Living engineering record  
 **Style:** Clear technical English, based on ASD-STE100 principles without strict controlled-language limits  
-**Status:** Experimental GPU physics engine. G5 is **DEFERRED / NOT QUALIFIED**. G6-P1 is preparation only; G6 and production release are **not qualified**.
+**Status:** Experimental GPU physics engine. G5 is **DEFERRED / NOT QUALIFIED**. G6-P1/P2 are preparation only; G6 and production release are **not qualified**.
 
 > **Update rule:** Update this document in the same change that closes, rejects, or reopens a development breakpoint. Keep prior results and their limitations. Do not turn a local experiment into a released feature by changing its status here.
 
@@ -605,6 +605,50 @@ The final batch passes **21 process runs**: successful publication; real solver 
 
 **Next action:** define and implement device-loss consumer cancellation and teardown/recovery boundaries, then qualify broader consumer integration. Keep G5 deferred; do not resume solver optimization as part of this work.
 
+## G6-P2 decision: bounded ownership on the existing queues (2026-10-19)
+
+**Decision: retain for local preparation.** Branch `g6-p2-resource-ownership-20261019`, based on P1 commit `603fd67506ede889bf6c7bc4b9cd034183d97ccb`. G5 is **DEFERRED / NOT QUALIFIED** and the solver, all HLSL/DXIL, production defaults, fixed ticks, tolerances and rollback equations are unchanged. G6 is **NOT QUALIFIED**. The original P1 working tree, including all four dirty binaries, remains byte-identical.
+
+### Audit and minimal integration
+
+The existing runtime already admits checked resource sizes against current DXGI budgets/reserves, tracks every submitted resource through its compute fence, serializes the fixed-pass producer on its direct queue, and retains allocator memory across split packets. P1 supplies bounded immutable generations. A replacement scheduler, new dispatch graph or GPU allocation pool was not needed.
+
+The gap was explicit ownership across external work: a lease held a generation, but did not declare consumer output dependencies or distinguish prepared, submitted, cancelled and failed work. The runtime could also retire a directly held buffer without seeing a lease. The P2 implementation extends these mechanisms rather than changing dispatch scheduling:
+
+- `ph_work_prepare` reserves an existing lease and at most three extra resource claims. Tasks share the fixed 64-entry lease table. Immutable input and publication serial are explicit. Producer-private resources and publication slots cannot be smuggled in as writable extras. Shared reads are permitted; writes are exclusive. Duplicate, stale, exhausted and partially admitted requests fail without evicting consumers. Partial claim acquisition unwinds every earlier claim.
+- Runtime read/write claims block conflicting admission, retirement, copy destinations, CPU writes and readback mapping while an external writer owns the resource. This is an owner-thread contract for known engine/native submissions, not a security boundary or a validator for arbitrary user-written shader behavior. Callers remain responsible for legal D3D12 resource kinds/states and declared native accesses.
+- `ph_work_submit` retains the actual native queue and completion fence on the same native device before GPU execution. An already completed fence value is rejected. The task records queue kind, ready fence, terminal fence, owner/context, ID, generation serial and dependencies. A lease is acquired only from an already completed accepted state, so no additional producer wait or GPU-to-CPU copy is needed.
+- Pre-submit cancellation releases claims immediately because no GPU work exists. After submission, cancellation or failure marks a pending terminal state; it does **not** preempt GPU commands or drop ownership. `ph_work_finish` releases claims only after the registered fence completes. A failed/removed fence cannot masquerade as completion. Failed native submission with no eventual fence remains a fail-stop/recovery boundary, not a reason to discard the consumer.
+- Each producer tick builds a checked, deduplicated descriptor of up to 32 dependencies, including spatial buffers, trial/meta/contact/indirect storage, upload, readback, and publication/optional render outputs. `sp_resources` exposes the existing private handle inventory for this audit. Conflicts fail before recording and before tick advancement (error 62); slot backpressure remains error 60. `ph_producer_work` returns the latest descriptor by value: callers that retain a submission audit save it before the next submission. Per-slot pending serials and fences remain owned independently. Pending producer GPU-generation counters are not accepted-state evidence; the unique publication serial is authoritative until validation.
+- The producer continues on its original queue, with its existing barriers, indirect dispatches and split submissions. An external GPU reader of the previous immutable generation can overlap it on a copy/compute/graphics queue. CPU API calls remain serialized by the owning thread. There is no general concurrent-CPU or multi-device scheduler.
+
+No additional normal-tick GPU allocation, GPU pass, CPU wait or readback was introduced. Task metadata and buffer claims use fixed host storage. The existing secondary-queue regression helper now allocates its bounded output through `s_new`, so test output admission and committed bytes are accounted too.
+
+### Verification and measured cost
+
+`python prepare_p2.py` verifies or rebuilds the frozen P1 control in isolated Git sources; `python run_g6_p2.py` performs one bounded serialized GPU batch with verified incremental builds. The final batch passes **22 process runs**: task conflicts and immutable writes, shared readers, delayed/concurrent copy-queue tasks, generation reuse, exhausted slots and all 64 task entries, pre/post-submit cancellation, logical failure with fence-safe cleanup, partial-claim rollback, stale handles/context recreation, already-completed fence rejection, and producer recording failure while a consumer survives. P1 publication/device tests and targeted idle/collision/first-contact/wake/energy/discovery/ownership regressions also pass. Native D3D12 debug validation reports zero errors. Viewer integration was compiled only; no GUI was launched. The initial batch's memory probes used `--warm` instead of `--warmup`; the failed harness evidence is retained.
+
+Unchanged P1 control versus candidate, RTX 4070 Ti SUPER, two AB/BA pairs with 32 warm ticks per process (64 samples per arm/workload), microseconds:
+
+| Workload | Arm | GPU p50/p95 | CPU record+submit p50 |
+|---|---|---:|---:|
+| idle | control | 266.75/269.00 | 217.50 |
+| idle | candidate | 266.50/269.50 | 213.60 |
+| moving | control | 406.75/408.50 | 240.10 |
+| moving | candidate | 406.75/409.75 | 242.70 |
+
+These short measurements show cost, not a claimed speedup or a sustained p95 guarantee. The independent eight-tick N=32 fixture-1 probes match full state, KKT/physics verification, **23 GPU allocations** and **1,507,328 committed bytes** in both arms. Extra GPU allocations and committed bytes from P2 are zero. The task-exhaustion check also verifies zero allocation growth across all 64 prepared tasks. Queue/driver residency is reported through DXGI where available and is not inferred from the host claim table.
+
+### P1 break timestamp reconciliation and evidence limits
+
+The archived P1 printed medians and p95 values reproduce their exact raw sample order statistics. The apparent 856 versus 761 microsecond difference was not a summary arithmetic mismatch. The benchmark query array is intentionally **not in chronological index order**: contact-admission markers use slots 30–38 between ordinary stage markers. The P2 batch verifies every sample using the actual chronological query sequence, telescopes all intervals to the complete-tick timestamp, and compares printed quantiles against raw samples. All checks pass; per-frame contact/iteration sequences and complete final states match across arms.
+
+The earlier approximately 95 microsecond break execution-time mode shift is still unexplained. Clock/runtime variance is a hypothesis, not proven attribution. **Break is excluded from performance claims**, including any speedup claim based on P1. New break measurements remain in JSON/CSV with `performance_eligible: false` solely for correctness/timestamp audit. This does not resolve physical clock attribution or establish a performance gain.
+
+Evidence: `evidence/g6-p2/results.json`, `results.csv`, `gate-G6-P2.json`, `p1-break-audit.json`, source/binary hashes, complete logs and initial failed harness attempt in the focused handoff. No full qualification campaign was run. Actual physical device-loss recovery, real hardware submission faults and sustained broad consumer integration remain **UNVERIFIED**. No networking subsystem or solver optimization was added.
+
+**Next action:** establish device-loss consumer teardown/recovery and qualify actual application consumers through this ownership API. Keep G5 deferred and do not treat this preparation breakpoint as formal G6 approval.
+
 ## 13. Verification and low-cost test workflow
 
 **Code:** `physics_verify.c`, `physics_tests.c`, `tests.zig`; on the playable branch `dev_test.py`, `test_dev_workflow.py`, and the billiards test scripts.
@@ -657,7 +701,7 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
 | **G5** | Large islands, convergence, robust solver performance | **DEFERRED / NOT QUALIFIED** | Bounded Anderson acceleration reduced work on several fixtures but lost convergence in eight previously converging configurations. Rejected; exact retained solver and all production defaults preserved. |
-| **G6** | Reproduce all gates, approve an engine foundation | **NOT QUALIFIED; G6-P1 preparation only** | G5 deferred. Local publication tests do not qualify G6 or approve an engine foundation. |
+| **G6** | Reproduce all gates, approve an engine foundation | **NOT QUALIFIED; G6-P1/P2 preparation only** | G5 deferred. Local publication tests do not qualify G6 or approve an engine foundation. |
 
 ### Current G5 decision (2026-10-18)
 
@@ -778,7 +822,7 @@ The 1,024-body attempted complete tick was 193.555→178.800 ms, schedule bracke
 
 ## 16. Risks and work still required
 
-1. **State isolation follow-up:** Integrate future consumers through the G6-P1 lease API. Qualify device-loss teardown/recovery and sustained ownership under broader workloads before formal G6.
+1. **State isolation follow-up:** Integrate future consumers through the G6-P2 task/lease ownership API. Qualify device-loss teardown/recovery and sustained ownership under broader workloads before formal G6.
 2. **General island convergence:** Residual-gated policy 4 passes the limited quick sweep and avoids unnecessary restarts in branching/oblique cases. It remains opt-in and unqualified for sustained/general workloads; preserve KKT limits and rollback.
 3. **Large-island parallelism:** The 1,024-body global-memory solver takes roughly 167.5 ms on the present policy-4 sample. A cache variant reduced this but hurt aggregate throughput; real DRAM stalls and FP64 utilization remain unverified. Profile per-iteration cost before any multi-workgroup rewrite.
 4. **Scheduler scope:** A reusable resource monitor and dependency scheduler are design goals, not completed general-purpose services.
@@ -823,6 +867,7 @@ Next action:
 
 | Date | Breakpoint | Record update |
 |---|---|---|
+| 2026-10-19 | G6-P2 resource/task ownership — LOCAL PREPARATION PASS | Reused fixed-pass queues and lease storage; added explicit dependencies, resource conflicts and non-preemptive fence-safe cancellation. Twenty-two headless process runs pass; zero extra GPU allocations/committed bytes. Break excluded from performance claims; G5 deferred and G6 not qualified. |
 | 2026-10-19 | G6-P1 consumer generation isolation — LOCAL PREPARATION PASS | Added bounded immutable GPU snapshots, completion-bound leases, explicit backpressure and failure ownership. Twenty-one headless process runs pass; paired costs recorded. G5 DEFERRED / NOT QUALIFIED; G6 NOT QUALIFIED; device loss remains unverified. |
 | 2026-10-18 | Baseline document | Established the technical inventory, G0–G5 history, evidence labels, known risks, and mandatory breakpoint update process. No new gate was approved by this documentation commit. |
 | 2026-10-18 | G5 adaptive-solver decision — FAIL | Reviewed 60 CLI runs and matching JSON/CSV summary. The adaptive policy converged in 16/20 runs but failed the 256- and 1,024-body chains. It was rejected; the previous policy remains the local baseline, and G5 stays open. |

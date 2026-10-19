@@ -71,3 +71,12 @@ void s_fail_dispatch_after(StorageDevice*,uint32_t);
 void *s_test_reader(StorageDevice*,uint64_t,uint64_t,void**);
 int s_test_reader_finish(void*,uint64_t*);
 int s_test_reader_start(void*);
+
+// Bounded ownership claims, not a scheduler. Owner-thread calls only.
+int s_resource_available(StorageDevice*,uint64_t,uint32_t);
+int s_resource_claim(StorageDevice*,uint64_t,uint32_t);
+int s_resource_unclaim(StorageDevice*,uint64_t,uint32_t);
+void *s_queue_retain(StorageDevice*,void*,uint32_t*);
+void s_queue_release(void*);
+void *s_test_reader_queue(void*);
+uint64_t s_test_reader_output(void*);

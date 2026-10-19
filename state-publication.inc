@@ -48,7 +48,7 @@ static int state_complete(Physics *p,uint32_t tick,const uint32_t *h){
  if(found<0||!p->state[found].fence||s_completed(p->d)==UINT64_MAX||s_completed(p->d)<p->state[found].fence)return 0;
  // Rejections never change the accepted pointer. Invalid completion is fail-closed.
  int valid=s_errors(p->d)==0&&(h[0]!=0||(h[13]==p->cfg.n&&h[G4_SOURCE_TICK_BYTE/4]==tick&&h[G4_SOURCE_EPOCH_BYTE/4]==p->state[found].epoch));
- p->state[found].pending=0;
+ p->state[found].pending=0;if(p->producer.publication_serial==p->state[found].serial){p->producer.status=valid&&!h[0]?PH_WORK_COMPLETE:PH_WORK_FAILED;p->producer.generation=h[G4_SOURCE_GENERATION_BYTE/4];}
  if(!valid){p->poisoned=1;return 0;}
  if(!h[0]){
   if(p->accepted_slot>=0&&p->state[found].serial<=p->state[p->accepted_slot].serial){p->poisoned=1;return 0;}
@@ -67,6 +67,7 @@ int ph_state_acquire(Physics *p,PhStateLease *v){
  if(s_completed(p->d)<p->state[slot].fence)return 0;
  for(unsigned i=0;i<PH_STATE_LEASES;i++)if(!p->leases[i].value.nonce){
   PhStateLease a={s_identity(p->d),p->state_context,p->state[slot].serial,++p->lease_nonce,p->state[slot].buffer,p->state[slot].fence,64ull*p->cfg.capacity+256,p->cfg.fixture==13?76ull*p->cfg.capacity+256:0,p->state[slot].generation,p->state[slot].tick,p->state[slot].epoch,p->cfg.n,p->cfg.capacity,slot,p->cfg.fixture==13?160:0,0};
+  if(!s_resource_claim(p->d,a.buffer,PH_WORK_READ))return 0;
   p->leases[i].value=a;p->state[slot].readers++;*v=a;return 1;
  }return 0;
 }
@@ -77,9 +78,10 @@ int ph_state_track(Physics *p,const PhStateLease *v,void *fence,uint64_t value){
  p->leases[i].completion=retained;p->leases[i].completion_value=value;return 1;
 }
 int ph_state_release(Physics *p,const PhStateLease *v){
- int i=state_lease_index(p,v);if(i<0)return 0;
+ int i=state_lease_index(p,v);if(i<0||(p->leases[i].task_status&&!p->leases[i].task_releasing))return 0;
  if(p->leases[i].completion&&!s_completion_ready(p->leases[i].completion,p->leases[i].completion_value))return 0;
- s_completion_release(p->leases[i].completion);p->state[v->slot].readers--;memset(&p->leases[i],0,sizeof(p->leases[i]));return 1;
+ if(!s_resource_unclaim(p->d,v->buffer,PH_WORK_READ))return 0;
+ s_queue_release(p->leases[i].queue);s_completion_release(p->leases[i].completion);p->state[v->slot].readers--;memset(&p->leases[i],0,sizeof(p->leases[i]));return 1;
 }
 int ph_state_stats(Physics *p,PhStateStats *out){
  if(!p||!out)return 0;memset(out,0,sizeof(*out));out->bytes_per_slot=p->state_bytes;out->committed=p->state_committed;out->serial=p->state_serial;out->slots=p->state_count;
