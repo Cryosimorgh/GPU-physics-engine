@@ -39,9 +39,13 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode',nargs='?',choices=['quick'],default='quick')
     parser.add_argument('--skip-overwritten-residual',action='store_true',help='compare scheduled residual-scan elision with retained snapshot baseline')
+    parser.add_argument('--early-residual-restart',action='store_true',help='compare one early residual-based policy-4 restart with retained skipped-scan baseline')
     args=parser.parse_args()
     skip=args.skip_overwritten_residual
-    prefix='g5-skip-residual-' if skip else 'g5-measure-snapshot-'
+    early=args.early_residual_restart
+    require(not (skip and early),'select one correction per batch')
+    matched=skip or early
+    prefix='g5-early-restart-' if early else 'g5-skip-residual-' if skip else 'g5-measure-snapshot-'
     out=ROOT/'dev-test-results'/(prefix+datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
     out.mkdir(parents=True)
     workflow=Workflow(out)
@@ -53,8 +57,9 @@ def main():
         workflow.run('unit-tests',[sys.executable,'-m','unittest','test_dev_workflow','test_sweep_g5','test_global_profile','-q'],timeout=60)
         archive=ROOT.parent/'g5-recovery-kit/original/G5-Global-Solver-Cost-Handoff-20261018T090324676154Z.zip'
         with zipfile.ZipFile(archive) as z:original=json.loads(z.read('evidence/results.json'))
-        if skip:
-            previous_path=max((ROOT/'dev-test-results').glob('g5-measure-snapshot-*/results.json'),key=lambda p:p.stat().st_mtime)
+        if matched:
+            baseline_prefix='g5-skip-residual-' if early else 'g5-measure-snapshot-'
+            previous_path=max((ROOT/'dev-test-results').glob(baseline_prefix+'*/results.json'),key=lambda p:p.stat().st_mtime)
             previous=json.loads(previous_path.read_text())
             require(previous['decision']=='RETAIN','snapshot baseline was not retained')
         assets=workflow.cache/'g5-sweep/PGS'
@@ -62,11 +67,13 @@ def main():
         require(fresh_cli.is_file(),'fresh unchanged same-toolchain CLI missing')
         builds={}; static={}; traces=[]
         for arm,enabled in [('control',0),('candidate',1)]:
-            reuse=1 if skip else enabled
-            skip_scan=enabled if skip else 0
+            reuse=1 if matched else enabled
+            skip_scan=1 if early else enabled if skip else 0
+            early_restart=enabled if early else 0
             ready=out/f'{arm}-ph_ready.dxil'
             workflow.build('measure-ready-'+arm,['physics.hlsl'],[ready.relative_to(ROOT).as_posix()],
                 [sdk()[1],'-T','cs_6_0','-Gis','-D',f'G5_REUSE_MEASURE_BODIES={reuse}','-D',f'G5_SKIP_OVERWRITTEN_RESIDUAL={skip_scan}','-D','G5_BODY_CACHE=0',
+                 '-D',f'G5_EARLY_RESIDUAL_RESTART={early_restart}',
                  '-E','ph_ready','-Fo',ready,ROOT/'physics.hlsl'])
             for policy,name in POLICIES.items():
                 directory=out/f'{arm}-policy-{policy}';directory.mkdir()
@@ -80,9 +87,10 @@ def main():
                 command=[sdk()[1],'-T','cs_6_0','-Gis','-D',f'G5_RELAXATION_POLICY={policy}',
                     '-D','G5_BODY_CACHE=0','-D',f'G5_REUSE_MEASURE_BODIES={reuse}',
                     '-D',f'G5_SKIP_OVERWRITTEN_RESIDUAL={skip_scan}',
+                    '-D',f'G5_EARLY_RESIDUAL_RESTART={early_restart}',
                     '-E','ph_solve','-Fo',binary,ROOT/'physics.hlsl']
                 workflow.build(f'measure-{arm}-{policy}',['physics.hlsl'],[binary.relative_to(ROOT).as_posix()],command)
-                reference=(previous['builds'][f'candidate-{policy}']['sha256'] if skip else
+                reference=(previous['builds'][f'candidate-{policy}']['sha256'] if matched else
                            original['builds'][name]['sha256'] if name in original['builds'] else None)
                 if arm=='control' and reference:
                     require(digest(binary)==reference['ph_solve.dxil'],'control DXIL differs from retained baseline '+name)
@@ -90,18 +98,26 @@ def main():
                 _,text=workflow.run(f'dxil-{arm}-{policy}',[sdk()[1],'-dumpbin',binary])
                 static[f'{arm}-{policy}']=dxil_counts(text)
                 builds[f'{arm}-{policy}']=dict(exe=str(directory/'physics.exe'),sha256={p.name:digest(p) for p in directory.iterdir()})
-            if skip:
-                directory=out/f'{arm}-trace';shutil.copytree(out/f'{arm}-policy-4',directory)
-                binary=directory/'ph_solve.dxil'
-                workflow.build(f'skip-trace-{arm}',['physics.hlsl'],[binary.relative_to(ROOT).as_posix()],
-                    [sdk()[1],'-T','cs_6_0','-Gis','-D','G5_RELAXATION_POLICY=4','-D','G5_BODY_CACHE=0',
-                     '-D','G5_REUSE_MEASURE_BODIES=1','-D',f'G5_SKIP_OVERWRITTEN_RESIDUAL={skip_scan}',
-                     '-D','G5_TRACE=1','-E','ph_solve','-Fo',binary,ROOT/'physics.hlsl'])
-                builds[arm+'-trace']=dict(exe=str(directory/'physics.exe'),sha256={p.name:digest(p) for p in directory.iterdir()})
+            if matched:
+                for trace_policy in ((3,4) if early else (4,)):
+                    key=f'{arm}-trace-policy-{trace_policy}'
+                    directory=out/key;shutil.copytree(out/f'{arm}-policy-{trace_policy}',directory)
+                    binary=directory/'ph_solve.dxil'
+                    workflow.build(key,['physics.hlsl'],[binary.relative_to(ROOT).as_posix()],
+                        [sdk()[1],'-T','cs_6_0','-Gis','-D',f'G5_RELAXATION_POLICY={trace_policy}','-D','G5_BODY_CACHE=0',
+                         '-D','G5_REUSE_MEASURE_BODIES=1','-D',f'G5_SKIP_OVERWRITTEN_RESIDUAL={skip_scan}',
+                         '-D',f'G5_EARLY_RESIDUAL_RESTART={early_restart}',
+                         '-D','G5_TRACE=1','-E','ph_solve','-Fo',binary,ROOT/'physics.hlsl'])
+                    builds[key]=dict(exe=str(directory/'physics.exe'),sha256={p.name:digest(p) for p in directory.iterdir()})
         for policy in POLICIES:
             a,b=static[f'control-{policy}'],static[f'candidate-{policy}']
             require(b['barriers']==a['barriers'],'barrier count changed')
-            if not skip:require(b['buffer_loads']<a['buffer_loads'],'no compiled load reduction')
+            if not matched:require(b['buffer_loads']<a['buffer_loads'],'no compiled load reduction')
+            if early and policy!=4:
+                require(builds[f'control-{policy}']['sha256']==builds[f'candidate-{policy}']['sha256'],'unchanged policy binaries differ')
+            if early and policy==4:
+                require(builds['control-4']['sha256']['ph_solve.dxil']!=builds['candidate-4']['sha256']['ph_solve.dxil'],
+                        'archived candidate shader required; rejected experiment is not active in the retained source')
         # Rule declared before the first GPU case. Expected rejected attempts
         # remain explicit and cannot inflate the accepted-tick aggregate.
         rule='Retain only if all matched convergence/rejection and independent audits pass, and BOTH policy-4 and all accepted-policy aggregates improve in geometric mean and summed complete-tick p50.'
@@ -119,15 +135,19 @@ def main():
                             row.update(arm=arm,policy=policy);runs.append(row)
                             (out/'progress.json').write_text(json.dumps(runs,indent=2))
                             require(row['status']!='TIMEOUT','GPU timeout: no further work submitted')
-        if skip:
-            for n in (64,256,1024):
-                path=out/f'chain-{n}.bin';_,expected=fixture('chain',n,path)
-                for arm in ('control','candidate'):
-                    trace_out=out/'traces'/arm;trace_out.mkdir(parents=True,exist_ok=True)
-                    row=execute(builds[arm+'-trace']['exe'],trace_out,'chain',n,'AdaptiveTrace',0,path,expected,20)
-                    row.update(arm=arm);traces.append(row)
-                    (out/'trace-progress.json').write_text(json.dumps(traces,indent=2))
-                    require(row['status']=='CONVERGED','residual trace failed; no further GPU work submitted')
+        if matched:
+            selected=[(f['topology'],f['n']) for f in fixtures] if early else [('chain',n) for n in (64,256,1024)]
+            for topology,n in selected:
+                path=out/f'{topology}-{n}.bin';_,expected=fixture(topology,n,path)
+                for trace_policy in ((3,4) if early else (4,)):
+                    for arm in ('control','candidate'):
+                        trace_out=out/'traces'/arm;trace_out.mkdir(parents=True,exist_ok=True)
+                        row=execute(builds[f'{arm}-trace-policy-{trace_policy}']['exe'],trace_out,topology,n,
+                                    POLICIES[trace_policy]+'Trace',0,path,expected,20,
+                                    early_restart=early and arm=='candidate' and trace_policy==4)
+                        row.update(arm=arm,policy=trace_policy);traces.append(row)
+                        (out/'trace-progress.json').write_text(json.dumps(traces,indent=2))
+                        require(row['status']!='TIMEOUT','residual trace timeout; no further GPU work submitted')
         rows=[]; correctness=True
         for topology,n,policy in dict.fromkeys((r['topology'],r['n'],r['policy']) for r in runs):
             groups={arm:[r for r in runs if (r['topology'],r['n'],r['policy'],r['arm'])==(topology,n,policy,arm)] for arm in ('control','candidate')}
@@ -147,21 +167,25 @@ def main():
                 row[arm+'_colors']=[r['proof']['colors'] for r in items]
                 row[arm+'_max_kkt']=max(r['proof']['kkt_ratio'] for r in items)
             correctness &= row.get('control_statuses')==row.get('candidate_statuses')
+            for arm in ('control','candidate'):
+                trace=next((r for r in traces if (r['topology'],r['n'],r.get('policy'),r['arm'])==(topology,n,policy,arm)),None)
+                row[arm+'_traced_restart_iterations']=[t['iteration'] for t in trace.get('trace',[]) if t['event']==8] if trace else [] if policy<3 else None
             rows.append(row)
+        correctness &= all(r['status']=='CONVERGED' for r in traces)
         require(sources=={n:digest(ROOT/n) for n in sources},'source mutated during batch')
         p4=aggregate(rows,True) if correctness else dict(retain=False)
         all_policies=aggregate(rows) if correctness else dict(retain=False)
         retain=bool(correctness and p4['retain'] and all_policies['retain'])
         result=dict(decision='RETAIN' if retain else 'REJECT',qualification=False,correctness=correctness,
             rule=rule,policy4_balance=p4,all_policy_balance=all_policies,source_sha256=sources,
-            experiment='skip overwritten pre-reconstruction residual scan' if skip else 'reuse measured body snapshot',
+            experiment='early residual-based policy-4 restart' if early else 'skip overwritten pre-reconstruction residual scan' if skip else 'reuse measured body snapshot',
             static_dxil=static,builds=builds,build_actions=workflow.actions,fixtures=fixtures,runs=runs,traces=traces,summary=rows,
             caveats=['Two cold samples per configuration: p95 is max, not a sustained-tail or statistical claim.',
                      'Color ordering can vary. Iteration/color counts are recorded for both arms.',
                      'Static DXIL instruction sites are not physical memory transactions or stall counters.'])
         (out/'results.json').write_text(json.dumps(result,indent=2))
         if traces:
-            trace_rows=[dict(arm=r['arm'],n=r['n'],**record) for r in traces for record in r['trace']]
+            trace_rows=[dict(arm=r['arm'],topology=r['topology'],n=r['n'],**record) for r in traces for record in r.get('trace',[])]
             with (out/'residual-traces.csv').open('w',newline='') as f:
                 writer=csv.DictWriter(f,fieldnames=list(trace_rows[0]));writer.writeheader();writer.writerows(trace_rows)
         with (out/'results.csv').open('w',newline='') as f:

@@ -7,6 +7,37 @@ from sweep_g5 import fixture, bodies, percentile, summarize, read_solver_trace, 
 
 
 class SweepTests(unittest.TestCase):
+    def early_trace_fixture(self, directory, fast=False, restart_iteration=256):
+        path,payload=self.trace_fixture(directory,4,3779,restart=True,contraction=.5)
+        arena_path=Path(str(path)+'-contacts-1.bin')
+        arena=bytearray(arena_path.read_bytes())
+        for slot,(before,after,contraction,event) in enumerate([
+            (1.,1.,0.,0),(1.,1.99,.99,1),
+            (1.99,1.99,.02 if fast else 1.5,4),
+            (1.99,1.99,.06 if fast else 1.1,4)]):
+            struct.pack_into('<4I6d3If',arena,80*(63+slot),0x47355452,1,0,64*(slot+1),
+                             .001,.001,0. if slot==0 else .002,contraction,before,after,event,4,0,.9)
+        struct.pack_into('<I',arena,80*(63+65)+12,restart_iteration)
+        arena_path.write_bytes(arena)
+        return path,payload
+
+    def test_early_restart_requires_complete_poor_settled_windows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path,payload=self.early_trace_fixture(directory)
+            records=read_solver_trace(payload,path,early_restart=True)
+            self.assertEqual([r['iteration'] for r in records if r['event']==8],[256])
+            with self.assertRaises(ValueError):read_solver_trace(payload,path)
+
+    def test_early_restart_does_not_consume_fast_contraction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path,payload=self.early_trace_fixture(directory,fast=True)
+            with self.assertRaises(ValueError):read_solver_trace(payload,path,early_restart=True)
+
+    def test_early_restart_rejects_one_window_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path,payload=self.early_trace_fixture(directory,restart_iteration=192)
+            with self.assertRaises(ValueError):read_solver_trace(payload,path,early_restart=True)
+
     def trace_fixture(self, directory, policy=2, iterations=366, restart=None, contraction=.5):
         path = Path(directory)/'trace.json'
         count, capacity = 63, 512

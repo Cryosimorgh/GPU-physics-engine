@@ -430,6 +430,31 @@ The retained default source SHA-256 is `39d7d5e606dfad1cbd71de04e1de68a3d7d008e3
 
 **Local evidence:** `dev-test-results/g5-skip-residual-20261018T194444930628Z/` contains JSON/CSV results, full per-run exports and proofs, all expected residual windows in `residual-traces.csv`, control/candidate DXIL dumps, build/source hashes, tested/retained shader snapshots, unit logs, default-build equality, and workspace-preservation checks. `dev-test-results/skip-residual-quick-console.log` is the consolidated output. The saved command `G5_SKIP_OVERWRITTEN_RESIDUAL=0` reproduces the retained control.
 
+### G5 early residual-based restart - REJECT (2026-10-19)
+
+**Hypothesis from retained traces:** After relaxation increases at iteration 128, the 64-body chain's next two window contractions are approximately 0.019 and 0.060; the 256-body chain's are 2.99 and 1.18, and the 1,024-body chain's are 3.48 and 27.35. A single candidate allowed policy 4 to restart before the existing budget checkpoint only after two consecutive complete windows with contraction at least 0.8, relaxation already above 1, and the settling period finished. Fast contraction resets the evidence. The original checkpoint fallback remains. There is no topology, fixture-name, or body-count condition; every equation, KKT tolerance, projection, energy/momentum check, rollback path, and 4,096-iteration/work limit is preserved. Policies 0-3 are byte-identical between arms. Production policy remains 1.
+
+**One matched headless batch:** `python sweep_solver_cost.py quick --early-residual-restart` prepares control/candidate builds, then serializes 200 timing trials across all ten fixtures and five policies, plus 40 separate policy-3/policy-4 trace checks across every fixture. All five control solver hashes match the retained skipped-residual baseline. A targeted CPU test first failed on the old trace interface; all **37 unit tests** passed in the batch after adding strict early-restart trace validation. Each timing arm had **90 accepted solves and the same 10 expected rejections**; independent coverage, KKT, momentum/energy, impulse, and rollback checks passed. All 40 traces converged and passed complete-window/restart audits. No timeouts or unexpected failures occurred.
+
+**Restart evidence:** Each arm's twenty traced cases contained four policy-3 restarts and two policy-4 restarts. Policy-3 behavior stayed unchanged. Policy 4 restarted the 256- and 1,024-body chains once at 256 instead of 512; the other eight fixtures had no policy-4 restart in either traced arm. In the 1,024-body trace, iterations changed from 4,025 to 3,769. No fast-converging fixture was incorrectly restarted in these traces. These are separately instrumented trace counts, not claimed per-timing-trial counters; all trace timings are excluded from the performance aggregates. Policies 0-2 have no restart code path.
+
+| Policy-4 chain, 1,024 bodies | Matched retained control | Early-restart candidate |
+|---|---:|---:|
+| Complete GPU tick p50 / p95 | 150.31 / 155.55 ms | 147.05 / 147.68 ms |
+| Solver p50 | 148.82 ms | 145.75 ms |
+| CPU record + submit p50 | 2.947 ms | 2.994 ms |
+| Timing-trial iterations | 4,025 / 4,024 | 3,768 / 3,770 |
+| Restart in separate trace | once at 512 | once at 256 |
+| Contacts / largest island | 1,023 / 1,024 | 1,023 / 1,024 |
+
+**Decision: REJECT and restore the retained solver source exactly.** Correctness passes and the chains improve, but the unchanged four-part performance rule fails: policy-4 geometric-mean complete-tick p50 ratio is **1.009750** (0.97% worse), while its summed-p50 ratio is 0.994430. All accepted-policy ratios are 0.992969 / 0.993816; these cannot override the failed policy-4 condition. Examples of policy-4 regressions are dense-64 (1.86 to 2.05 ms), dense-256 (9.70 to 10.15 ms), and oblique-256 (28.79 to 32.65 ms). Two cold samples and contact/color-order variation limit causal attribution; no statistical significance, cache, register-pressure, or hardware-stall claim is made. No second parameter choice or GPU rerun was attempted.
+
+**Preservation and breakpoint:** Original `g5-residual-work` files and uncommitted status remain unchanged; 388 file hashes were checked. Experiment work is isolated on branch `g5-early-residual-restart-20261019` in `g5-restart-work`. Active `projected_solver.hlsl` was restored byte-for-byte to the retained SHA-256 `10c5ee6541c7799119a9578b304c51f8d3de3938e2221613894bc7fae75d5c24`; rebuilt policies 1 and 4 match their control shader hashes. The rejected shader SHA-256 `b57f6011133a647bf4c787913ed70a8be484923d27edd69a6c1e862ec10c449b` is preserved only as experiment evidence. The trace decoder retains all old default checks and additionally verifies both poor settled windows before accepting an early restart; premature and fast-contraction restart fixtures fail its unit tests. The sweep refuses an early-restart comparison when the archived candidate shader is not applied.
+
+**Remaining issue and gate state:** The retained policy 4 still spends roughly 512 iterations before its bounded restart. Earlier restart is promising for the chain but is not retained without a balanced gain across the existing workloads. Resolve color/order and short-run measurement variability before attributing or tuning the small-case losses. G0-G4 statuses are unchanged; G5 remains **NOT QUALIFIED**, with policy 4 opt-in. No GUI, screenshots, per-case manual GPU runs, full campaign, or release package was used.
+
+**Local evidence:** `dev-test-results/g5-early-restart-20261019T032246446898Z/` contains all source/build hashes, unchanged-policy comparisons, JSON/CSV timing and correctness results, raw exports, all 40 full residual traces, unit/build logs, rejected shader snapshot, and `rejection-and-preservation.json`. The consolidated output is `dev-test-results/early-restart-quick-console.log`. The single focused handoff includes the candidate shader as evidence for reproduction; it does not activate the rejected solver.
+
 ## 9. Global time, sleeping, and simulation state
 
 **Code:** `physics.c`, `physics.hlsl`, `viewer.c`.

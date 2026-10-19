@@ -129,7 +129,7 @@ def build_variants(workflow, diagnose=False, trace_restarts=False):
     return variants
 
 
-def read_solver_trace(payload, path):
+def read_solver_trace(payload, path, early_restart=False):
     """Read bounded test-only ABI v1; require every expected window, not samples."""
     require(payload['islands'] == 1 and payload['solver_dispatches'] == 1,
             'diagnostics require one actual solve; trace slots may otherwise be overwritten')
@@ -162,12 +162,28 @@ def read_solver_trace(payload, path):
     require([r['slot'] for r in windows] == list(range(expected)), 'missing residual windows')
     require(all(r['iteration'] == 64*(r['slot']+1) for r in windows), 'incorrect trace iteration')
     restarts = [r for r in records if r['slot'] == 65]
+    early_at=None
+    if early_restart and final[0]['policy']==4:
+        poor,settling=0,0
+        for record in windows:
+            if record['iteration']>=512:break
+            poor=poor+1 if record['previous_minimum']>0 and record['omega_before']>1 and record['contraction']>=.8 else 0
+            if record['event'] in (1,2):settling=2
+            elif record['event']==4:
+                require(settling>0,'settling trace has no controller transition')
+                settling-=1
+            if poor>=2 and settling==0:
+                early_at=record['iteration'];break
     restart_required = final[0]['policy'] == 3 and it > 512
     if final[0]['policy'] == 4 and it > 512:
         checkpoint = next((r for r in windows if r['iteration'] == 512), None)
         require(checkpoint is not None, 'missing restart-decision residual window')
         restart_required = checkpoint['contraction'] >= .8
-    if restart_required:
+    if early_at is not None:
+        require(len(restarts)==1 and restarts[0]['event']==8 and
+                restarts[0]['iteration']==early_at and restarts[0]['omega_after'] in (1.995,OMEGA_MAX),
+                'missing/bad early residual restart')
+    elif restart_required:
         require(len(restarts) == 1 and restarts[0]['event'] == 8 and
                 restarts[0]['iteration'] == 512 and restarts[0]['omega_after'] in (1.995, OMEGA_MAX),
                 'missing/bad budgeted restart')
@@ -294,7 +310,7 @@ def audit(payload, path, input_path, expected):
     return proof
 
 
-def execute(exe, out, topology, n, solver, sample, input_path, expected, timeout, iterations=4096, idle=False):
+def execute(exe, out, topology, n, solver, sample, input_path, expected, timeout, iterations=4096, idle=False, early_restart=False):
     name = f'{topology}-{n}-{solver}-{sample}'
     path = out/(name+'.json')
     command = [exe, '--n', str(n), '--fixture', '0', '--flags', '2' if topology == 'oblique' else '0',
@@ -331,7 +347,7 @@ def execute(exe, out, topology, n, solver, sample, input_path, expected, timeout
             else:
                 row['proof'] = audit(payload, path, input_path, expected)
             if solver.endswith('Trace'):
-                row['trace'] = read_solver_trace(payload, path)
+                row['trace'] = read_solver_trace(payload, path, early_restart=early_restart)
             row['status'] = 'REJECTED' if row['proof']['rejected'] else 'CONVERGED'
     except subprocess.TimeoutExpired:
         row.update(status='TIMEOUT', error=f'process exceeded {timeout}s; terminated and waited')
