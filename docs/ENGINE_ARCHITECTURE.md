@@ -613,7 +613,7 @@ A **breakpoint** is a formal gate close, a gate reopen, a changed system contrac
 | **G2** | Spatial search and contacts | **Passed in historical scoped tests** | Hash selected; contact construction verified. |
 | **G3** | Integrated evolving physics | **Scoped results available** | Large connected workloads exposed severe cost. |
 | **G4** | Graphics, overlap, playable viewer | **Conditional GO** | GPU-02 physical displayed FPS not closed. |
-| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Bounded deterministic measurement mode verified locally; timing variation remains. Rejected optimization policies remain rejected. Policy 4 still opt-in; production remains policy 1. |
+| **G5** | Large islands, convergence, robust solver performance | **In progress — NOT QUALIFIED** | Bounded deterministic measurements verified. Post-color barrier coalescing rejected: gain not separable from timing variation. Retained solver restored exactly; production remains policy 1. |
 | **G6** | Reproduce all gates, approve an engine foundation | **Not started / not authorized** | Requires G4/G5 closure and architecture proof. |
 
 ### Current G5 decision (2026-10-18)
@@ -655,6 +655,30 @@ Policy-4 timings below are milliseconds, eight cold one-tick repeats. Schedule/n
 
 G0–G4 statuses remain frozen; GPU-02 remains unverified, G5 unqualified, and G6 unauthorized.
 
+### G5 post-color synchronization experiment (2026-10-19)
+
+**Decision: REJECT; exact retained solver restored.** Branch `g5-color-boundary-measurement-20261019` tested one narrow correction. On the global-memory path, `applyColor()` ends each nonempty color batch with `DeviceMemoryBarrierWithGroupSync()`. The outer iteration and reconstruction then repeat that barrier before residual reads. Greedy coloring guarantees a populated final color. The candidate skipped only these two duplicate boundaries when `localMode!=1 && colors>0`; local-cache and zero-color boundaries stayed unchanged. All equations, policies, projection, KKT limits, residual scans, and work limits stayed unchanged. Schedule construction remained test-only and unchanged. The candidate is preserved as `experiments/g5-color-boundary-20261019.patch`, not active solver code.
+
+**Source/DXIL evidence:** The 1,024-body fixture has color sizes 512/511: eight color-batch barriers per sweep, followed by the redundant boundary. Its 4,024 iterations and 503 scheduled reconstructions expose 4,527 removable dynamic boundaries. This is a source-derived count, not measured stall time. Policy-4 DXIL retains 20 static barrier call sites but adds conditional branches around the two outer sites; fewer static calls were not claimed. All five macro-disabled controls reproduced the previous DXIL hashes exactly. The same cached instrumented CLI and scheduling shaders served both arms; only solver shaders were compiled. No new allocation, CPU synchronization, or production scheduling change was introduced.
+
+**Local batch:** `dev-test-results/g5-color-boundary-20261019T041659906648Z/results.json`, `summary.csv`, and raw exports, RTX 4070 Ti SUPER. One serialized 240-trial batch used eight paired policy-4 samples on all ten existing fixtures and one paired sample for each policy 0–3. Each pair matched complete contact/color/local/arithmetic schedules, iterations, FP64 work state, accumulated normal/tangent impulses, and published state exactly. Existing independent coverage, coloring, KKT, energy/momentum, and impulse-reconstruction checks passed. Each arm had 115 converged attempts and five expected rejected attempts with exact rollback (PGS chains 64/256/1,024; policy 2 chains 256/1,024). There were no errors/timeouts. A targeted source contract failed before editing as expected; 46 preflight unit checks and 49 restored-baseline checks passed.
+
+Policy-4 chain 1,024, medians of eight samples per arm:
+
+| Metric | Control | Candidate |
+|---|---:|---:|
+| Actual contacts / iterations | 1,023 / 4,024 | 1,023 / 4,024 |
+| Schedule construction brackets | 44.872 ms | 44.949 ms |
+| Solver execution | 147.503 ms | 143.696 ms |
+| Complete GPU tick | 193.720 ms | 191.815 ms |
+| CPU record + submission | 3.348 ms | 3.394 ms |
+
+**Uncertainty and rejection:** The median solver difference is −2.58%, but the paired geometric ratio is 0.98847 with exploratory paired-bootstrap 95% interval [0.97077, 1.00718]. The predeclared rule required a gain greater than max(3.6%, same-batch control A/A deviation), plus an interval below 1 and aggregate complete-tick improvement. The observed control A/A floor was 4.36% (four adjacent pairs; its nearest-rank p95 is the maximum, not a stable tail estimate). Equal-fixture complete-tick ratio was 0.99812 [0.97173, 1.02548]. Neither test passed. The 256-body chain's solver increased slightly, 32.021→32.117 ms; other local-cache fixtures showed timing shifts despite unchanged synchronization behavior. Schedule sorting still depends on incoming atomic placement, so its runtime varies despite identical canonical output. Cold samples and bootstrap intervals do not prove thermal stability, sustained latency, or a hardware cause. Do not call this a retained speedup.
+
+The active shader again hashes to `10c5ee6541c7799119a9578b304c51f8d3de3938e2221613894bc7fae75d5c24`. Original workspace status and all 393 snapshotted file hashes remain unchanged. The executed candidate scripts, source, tool/binary hashes, predeclared rule, disassembly, and restoration proof are archived with the batch. To reproduce, apply the rejected patch only in a separate copy of the deterministic baseline, initialize `dev-test-results/color-boundary-current.txt` to a new batch directory, copy the retained shader there as `control-projected_solver.hlsl`, then run `python measure_color_boundary.py`; the prior deterministic control artifacts are required. Do not apply this patch to production.
+
+**Next target, not implemented:** The unchanged 4,024-iteration FP64 contact/color loop still dominates. Inspect contact-local body reloads between relative-velocity evaluation and impulse application, preserving the updated normal-before-tangent state. Redundant barrier removal alone did not demonstrate a reliable end-to-end gain. G0–G4 remain frozen, G5 unqualified, and G6 unauthorized.
+
 ## 16. Risks and work still required
 
 1. **Strict state isolation:** Replace per-body in-place publication with a proven completed-generation handoff. Measure any copy or memory cost.
@@ -665,6 +689,7 @@ G0–G4 statuses remain frozen; GPU-02 remains unverified, G5 unqualified, and G
 6. **Evidence discipline:** Keep the exact source revision, shader hashes, fixtures, and GPU/driver context with measurements. Do not combine numbers from different scenarios into one speed claim.
 7. **Production integration:** G6 must define API stability, error handling, host integration, and long-running device-loss recovery before an engine rewrite is authorized.
 8. **Measurement scheduling:** Canonical schedules now separate arithmetic variability from runtime variability only inside the bounded measurement envelope. Sorting overhead and cold-run timing noise must not be reported as production solver cost or speedup.
+9. **Small optimization claims:** Barrier coalescing passed exact numerical comparison but failed the predeclared uncertainty and aggregate gates. Its shader is rejected; future changes need matched schedules and same-batch noise controls.
 
 ## 17. How to update this living document
 
@@ -705,6 +730,7 @@ Next action:
 | 2026-10-18 | G5 residual-gated restart — OPT-IN RETAIN | Audited 80 short GPU timing runs, 10 trace checks and 17 reported sweep unit tests. Policy 4 converged in 20/20 and lowered aggregate GPU p50 sum by 13.5% relative to policy 3, but remained slow on large chains. Production policy 1 unchanged; G5 unqualified. |
 | 2026-10-18 | G5 shared-body-cache experiment — REJECT | Audited 100 CLI timing trials, 22 probes, 22 unit tests and the HLSL source. 1,024-body GPU p50 improved 170.13→152.69 ms, but aggregate geometric mean worsened 4.25%. Hardware counter attribution is unverified. Default remains cache-off; G5 open. |
 | 2026-10-19 | G5 deterministic measurement — BOUNDED PASS | One 180-trial headless batch plus two safe-envelope rejections: repeatable contact/color schedules, iterations and FP64 results for policies 0–4. Scheduling overhead measured separately; runtime variance remains. Production/solver unchanged; previous handoff hash reconciled with execution-time provenance still unverified. G5 remains open. |
+| 2026-10-19 | G5 post-color barrier coalescing — REJECT | One 240-trial deterministic comparison: exact arithmetic/results, rollback preserved; apparent 1,024-body solver gain failed the 4.36% noise floor and uncertainty/aggregate gates. Exact retained solver restored; rejected patch archived. G5 remains open. |
 
 ---
 
