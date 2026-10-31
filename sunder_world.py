@@ -241,7 +241,10 @@ def _set_body(a: np.ndarray, slot: int, generation: int, body: Body, cfg: WorldC
     if not body.static:
         mass = float(body.mass)
         moment = .4 * mass * float(body.radius) ** 2
-        if not math.isfinite(moment) or moment <= 0 or not math.isfinite(1 / moment):
+        if (not math.isfinite(moment) or moment <= 0 or
+                float(np.float32(moment)) <= 0 or
+                not math.isfinite(1 / moment) or
+                float(np.float32(1 / moment)) <= 0):
             raise WorldError("INVALID_COMMAND", "inertia out of range")
         a[19, slot] = 1 / mass
         a[24:27, slot] = moment
