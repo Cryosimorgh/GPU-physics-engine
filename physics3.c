@@ -78,6 +78,13 @@ int ph3_drop_stage(Physics3 *p){
 }
 static uint32_t bits(float f){uint32_t u;memcpy(&u,&f,4);return u;}
 static int dispatch3(Physics3 *p,unsigned pass,uint32_t count,const uint64_t *h,const uint32_t *k){return s_bind(p->d,h,k)&&s_dispatch(p->d,pass,count?count:1);}
+int ph3_resume_clock(Physics3 *p,uint32_t accepted_ticks,float dt){
+ if(!p||!p->seeded||p->tick||p->fixed_dt||!isfinite(dt)||dt<=0||
+    accepted_ticks==UINT32_MAX||s_completed(p->d)<s_fence(p->d))return 0;
+ uint32_t fixed;memcpy(&fixed,&dt,sizeof(fixed));
+ p->tick=accepted_ticks;p->fixed_dt=fixed;
+ return 1;
+}
 uint32_t ph3_last_host_error(Physics3 *p){return p?p->last_host_error:3;}
 int ph3_tick(Physics3 *p,float dt,const float *gravity,float cell,uint32_t inject,Ph3Result *r){
  if(p)p->last_host_error=1;
