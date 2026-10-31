@@ -22,7 +22,8 @@ RUN = BASE / "runs" / RUN_ID
 SOURCES = ("physics3.c", "physics3.h", "physics3.hlsl", "physics3-schema.json",
            "sunder_world.py", "headless_demo.py", "test_physics3.py",
            "test_sunder_world.py", "test_native_world.py", "run_world_sweep.py",
-           "package_p10_evidence.py", "build_physics3.py")
+           "package_p10_evidence.py", "test_p10_packaging.py",
+           "RUN_P10_WINDOWS.cmd", "build_physics3.py")
 CASES = ("cpu-world", "build", "world-empty", "native-world", "world-16",
          "world-1024", "native-physics", "legacy-pool-rail", "native-stress")
 
