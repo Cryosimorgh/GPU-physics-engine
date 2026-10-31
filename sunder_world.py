@@ -10,6 +10,7 @@ import ctypes as C
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 import hashlib
+import itertools
 import json
 import math
 import secrets
@@ -22,6 +23,8 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent
 U32_MAX = (1 << 32) - 1
+_WORLD_NAMESPACE = secrets.token_hex(16)
+_WORLD_IDS = itertools.count(1)
 
 
 class WorldError(RuntimeError):
@@ -82,7 +85,7 @@ class Body:
 class Handle:
     slot: int
     generation: int
-    world_id: int
+    world_id: str
 
 
 @dataclass(frozen=True)
@@ -304,7 +307,7 @@ class Snapshot:
 class World:
     def __init__(self, config: WorldConfig = WorldConfig(), backend_factory=Backend):
         self.config = config
-        self._world_id = secrets.randbits(64)
+        self._world_id = f"{_WORLD_NAMESPACE}:{next(_WORLD_IDS)}"
         self._initial_config = config
         self._lock = threading.RLock()
         self._backend_factory = backend_factory
