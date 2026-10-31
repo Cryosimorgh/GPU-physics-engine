@@ -57,7 +57,7 @@ efficient sparse-body compaction. An adapter's authoring bounds are not physical
 wall contacts. Replay requires independently accepted physics within tolerance;
 bitwise determinism stays unsupported.
 
-**Evidence boundary:** The implementation was written through a GitHub
+**Evidence boundary:** Host contract GitHub Actions PASS (10 Python mocked-backend unit tests; Linux runner `41229876886`, commit `93ea51d`) and Windows compile-only GitHub Actions PASS (9 original compute shaders + DLL + syntax, run `41229757701`, commit `5069f6c`). These checks do **not** execute D3D12 physics or independently validate the GPU result. The implementation was written through a GitHub
 connection in an environment without Windows/D3D12 execution. All new native
 and compatibility gates remain **NOT RUN** in this branch until an independent
 `python run_world_sweep.py --full` executes on supported hardware and commits
