@@ -102,6 +102,8 @@ class TickResult:
     deadline_miss: bool
     cause: str = ""
     wall_us: float = 0.
+    gpu_fixed_step_deadline_miss: bool = False
+    host_fixed_step_deadline_miss: bool = False
 
 
 class NativeResult(C.Structure):
@@ -559,7 +561,9 @@ class World:
                                 int(r.contacts), int(self._accepted_active.sum()),
                                 float(r.phases_us[7]), cpu_us, int(r.committed),
                                 wall_us > self.config.deadline_ms * 1000, cause,
-                                wall_us)
+                                wall_us,
+                                float(r.phases_us[7]) > self.config.dt * 1_000_000,
+                                wall_us > self.config.dt * 1_000_000)
             self._history.append({"tick": self.tick_id, "commands": commands,
                                   "result": asdict(report)})
             self._clear_staging()
