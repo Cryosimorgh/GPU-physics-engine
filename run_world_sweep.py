@@ -38,6 +38,16 @@ def git_revision():
     return p.stdout.strip() if p.returncode == 0 else None
 
 
+def tracked_changes():
+    try:
+        p = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
+                           cwd=ROOT, capture_output=True, text=True,
+                           timeout=15, check=False)
+        return p.stdout.splitlines() if p.returncode == 0 else ["GIT STATUS UNAVAILABLE"]
+    except (OSError, subprocess.TimeoutExpired):
+        return ["GIT STATUS UNAVAILABLE"]
+
+
 def driver_inventory():
     if platform.system() != "Windows":
         return {"status": "NOT RUN: no Windows GPU host"}
@@ -131,10 +141,13 @@ def main():
         return 2
     RUN.mkdir(parents=True, exist_ok=False)
     first = digest()
+    revision = git_revision()
+    dirty = tracked_changes()
     result = {
         "schema": "sunder-p10-native-qualification-v2",
         "run_id": RUN_ID, "status": "NO-GO", "pr": 8,
-        "revision": git_revision(), "host_platform": platform.platform(),
+        "revision": revision, "tracked_changes_at_start": dirty,
+        "host_platform": platform.platform(),
         "python": sys.version, "driver_inventory": driver_inventory(),
         "build_and_source_sha256": first,
         "scope": "native GPU authored spheres, independent numerical replay, old physics and separated-pair stress",
@@ -177,6 +190,9 @@ def main():
             return 1
         if first != digest():
             result["failure"] = "source inputs changed during qualification"
+            return 1
+        if not revision or dirty:
+            result["failure"] = "missing Git provenance or locally modified tracked files"
             return 1
         result["status"] = "GO: all scripted native tests PASS; review limitations before merge"
         return 0
