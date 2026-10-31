@@ -32,6 +32,9 @@ PH3_API int ph3_seed(Physics3*,const float *soa,const float *planes,uint32_t pla
  * remain unchanged. On failed tick, call ph3_drop_stage to discard the edit. */
 PH3_API int ph3_stage(Physics3*,const float *soa);
 PH3_API int ph3_drop_stage(Physics3*);
+/* Host failure classifier: 0 none, 1 invalid call, 2 lease backpressure,
+ * 3 device/record/submission/readback failure. GPU validation is result.error. */
+PH3_API uint32_t ph3_last_host_error(Physics3*);
 PH3_API int ph3_tick(Physics3*,float dt,const float *gravity,float cell,uint32_t inject,Ph3Result*);
 PH3_API int ph3_read(Physics3*,float *soa);
 PH3_API int ph3_contacts(Physics3*,void *records,uint32_t capacity);
