@@ -1,10 +1,10 @@
-# GPU Physics Engine — Technical Architecture and Development Record
+# Sunder — Technical Architecture and Development Record
 
-**Project:** [Cryosimorgh/GPU-physics-engine](https://github.com/Cryosimorgh/GPU-physics-engine)  
+**Project:** [Cryosimorgh/Sunder](https://github.com/Cryosimorgh/Sunder)  
 **Record date:** 2026-10-31
 **Document type:** Living engineering record  
 **Style:** Clear technical English, based on ASD-STE100 principles without strict controlled-language limits  
-**Status:** Experimental GPU physics engine. **P10 native 3D foundation: GO within the tested bounded headless envelope.** G5 is **DEFERRED / NOT QUALIFIED**. G6 and production release remain **NOT QUALIFIED**. P9's bitwise replay guarantee remains unresolved and does not block numerically validated 3D development. P4 remains an explicit rendering option; matching-tick rendering remains the default for the planar viewer.
+**Status:** Experimental GPU physics engine. **P10 native 3D foundation: GO within the historical bounded tested envelope. P10 general-purpose headless world API: IMPLEMENTED ON FEATURE BRANCH / NO-GO UNTIL NATIVE REVALIDATION.** G5 is **DEFERRED / NOT QUALIFIED**. G6 and production release remain **NOT QUALIFIED**. P9's bitwise replay guarantee remains unresolved and does not block numerically validated 3D development. P4 remains an explicit rendering option; matching-tick rendering remains the default for the planar viewer.
 
 > **Update rule:** Update this document in the same change that closes, rejects, or reopens a development breakpoint. Keep prior results and their limitations. Do not turn a local experiment into a released feature by changing its status here.
 
@@ -20,7 +20,7 @@ This repository is an **independent experiment**. It does not depend on Unity or
 
 There are two different development baselines:
 
-- [`main`](https://github.com/Cryosimorgh/GPU-physics-engine/tree/main) stores the original G4 engine snapshot. It does **not** contain the later G5 sweep code or all subsequent optimization experiments.
+- [`main`](https://github.com/Cryosimorgh/Sunder/tree/main) now includes merged P8b pool precision, P9 incomplete evidence (PR #6), and the bounded native 3D P10 foundation. The earlier G4-only main statement was historical and is no longer accurate; G5 optimization research is still not qualified.
 - [`billiards-playable-requalification-20261018`](https://github.com/Cryosimorgh/GPU-physics-engine/tree/billiards-playable-requalification-20261018) stores the later playable billiards, headless test workflow, and revised shaders. Its test and README claims apply to that branch.
 
 G5 results in this record come from **user-supplied local handoff results**, not from a G5 release on `main`. The latest uploaded `results.json` describes a quick, two-sample, cold, one-tick sweep. It explicitly marks `qualification: false`.
@@ -34,6 +34,38 @@ Use these labels throughout the document:
 | **Conditionally accepted** | The scoped tests pass, but at least one exit condition is open. |
 | **Experimental** | A local or branch-specific change needs broader evidence. |
 | **Planned** | A design target. No implementation claim. |
+
+### Application-facing headless world API — P10 feature branch / NO-GO (2026-10-31)
+
+**Implementation proposal:** [P10_WORLD_API.md](P10_WORLD_API.md) describes
+`sunder_world.py`, `headless_demo.py`, `run_world_sweep.py`, the new native
+`ph3_stage`/`ph3_drop_stage` candidate source and host error classifier, and
+`test_sunder_world.py`. The new layer wraps existing D3D12 3D sphere
+simulation; it does not alter the 2D physics kernel or weaken its gates.
+A candidate GPU source is kept separate from accepted snapshot slots until the
+GPU validation/publish fence succeeds. The host generation map is committed
+only alongside the accepted native tick. Fixed-step clock continuity is
+explicitly restored on capacity growth.
+
+Worlds author spheres and expose typed MKS units, bounded capacities, stable
+generation handles, per-body properties, forces/impulses, fixed-step/async
+completion, immutable acquired snapshots, ordered command capture and
+numerical replay comparisons. Native GPU state remains resident on ordinary
+ticks. Input edits and explicit CPU state inspection require full-state
+readbacks. Inert GPU proxies retain unused stable slots; there is no claim of
+efficient sparse-body compaction. An adapter's authoring bounds are not physical
+wall contacts. Replay requires independently accepted physics within tolerance;
+bitwise determinism stays unsupported.
+
+**Evidence boundary:** The implementation was written through a GitHub
+connection in an environment without Windows/D3D12 execution. All new native
+and compatibility gates remain **NOT RUN** in this branch until an independent
+`python run_world_sweep.py --full` executes on supported hardware and commits
+consolidated JSON/log evidence. The Python fake-backend unit suite cannot
+qualify physics. Existing [P10_EVIDENCE.json](P10_EVIDENCE.json) pertains only
+to the earlier merged native 3D foundation and is not a test result for the new
+world adapter. Do not merge this PR without a verified GO. G5 is DEFERRED;
+GPU-02 is UNVERIFIED; formal G6 and production release remain NOT QUALIFIED.
 
 ## 2. System layout
 
@@ -1254,6 +1286,8 @@ Sticky failed contexts, checked bounded teardown and explicit new-scene recreati
 
 **Decision: G6-P8a LOCALIZATION PASS / PHYSICS FAILURE OPEN; FORMAL G6 NOT QUALIFIED.** The candidate branch adds **test-only** first-error diagnostics in previously spare pool-extension bytes; 85 default DXIL files remain unchanged and diagnostic shader binaries are restored in the recorded run. No solver mathematics, KKT thresholds, rollback, or production behavior changed. This review **only updates the living architecture**, not production source. G5 stays **DEFERRED / NOT QUALIFIED** and GPU-02 remains **UNVERIFIED** per decision to move on.
 
+**Historical plan, now completed and merged:** The following P8b next-task instruction was written before the correction in PR #5. It is retained as an evidence chronology, not an outstanding issue. The accepted correction and latest P9 status are recorded below.
+
 **Next task (P8b):** Apply only a **precision-consistency correction** for pool rail gap formation: evaluate all four rail gaps with FP64 subtraction from existing stored FP32 inputs before `poolTarget()`, aligning with the FP64 validation geometry while preserving existing final target precision, equations, KKT tolerance, solver work cap and rollback. Use one bounded nine-shot reproduction and near-boundary tests for each rail, stable persistence/impacts and energy/rolling; compare unchanged control, fault-reproducing diagnostic, and correction. Do **not** suppress the subcode, increase iterations, widen acceptance or run G5 optimization sweeps. Record raw accepted tick/hash history, no regression in non-pool fixtures, and any remaining failures. Only if P8b passes may another small sustained sample be used to establish a limited envelope; P9 host API and P10 release approval remain later decisions.
 
 **Audit evidence:** `G6-P8a-Pool-Validation-20261019.zip`; revision `2db61f69b9dc84e02e8109792110caa1c415149e`. 218 ZIP entries/217 verified payload hashes; bundled offline verifier PASS; 12 exact published Git blob matches; original + control + two diagnostic sequences, all 4,073 state hashes and nine shot ticks identical, IEEE754 gap/residual independently recomputed. Recorded GPU execution is not independent Windows testing.
@@ -1339,6 +1373,7 @@ Next action:
 | Date | Breakpoint | Record update |
 |---|---|---|
 | 2026-10-31 | P10 native 3D foundation — bounded GO | Added tensor/quaternion 3D GPU sphere/plane dynamics, immutable publication and real delayed-reader proof. Seven native groups, all three stress scales and unchanged full 2D regressions pass. Numerical native validity required; bitwise replay remains unqualified. Formal G6/release remains not qualified. |
+| 2026-10-31 | P10 application-facing headless core branch — NO-GO pending native execution | Staged accepted-state-safe GPU edits, typed world handles, fixed-step async control, leases, ordered numerical replay and CLI regression plan implemented on a dedicated branch. No new Windows/D3D12 run or performance qualification reported. P8b MERGED, P9 INCOMPLETE, G5 deferred, GPU-02 unverified, G6 NOT QUALIFIED. |
 | 2026-10-19 | G6-P8b merged correction / P9 BLOCKED on repeatability | PR #5 merged at e843a42; P8/P8a failed evidence retained. P9 records four functionally passing 30-second sessions, but stops at 1K tick32 repeatability failure; two short traces localize atomic scatter/color-order variation. 8K and remaining lifecycle checks NOT RUN. G5 deferred, GPU-02 unverified, G6 not qualified. |
 | 2026-10-19 | G6-P8a pool KKT failure root cause — LOCALIZATION PASS / PHYSICS NOT FIXED | Verified 217 ZIP payload hashes, 12 pushed Git blob IDs and offline verifier; original P8, unmodified control and two diagnostics have 4,073 identical state hashes each, nine shots, and matching tick-4,072 rejection/rollback. Subcode 1 = ball 7/right rail normal KKT. Independently reproduced FP32 vs FP64 gap difference times 128 exactly equals residual 7.152557373046875e-06 (9.8368× limit). No solver/production fix, G5 deferred, P8 small pool still fails, G6 unqualified. |
 | 2026-10-19 | G6-P8 sustained physics external audit — LIMITED / POOL FAIL | Independently verified 41 ZIP checks, 7 pushed Git blobs and 5,788 raw attempts (5,787 accepted, one shared-error-32 pool rejection). Medium/large 30-wall-second runs accept 884/831 ticks (1,024/8,192 disks in max-16-body islands), with stable tracked memory and checked rollback, but CPU-oracle overhead, GPU drift and 220.17-ms worst tick prohibit real-time claims. Pool 9-shot sequence fails at attempt 4,072; exact subvalidator unknown. G5 deferred, GPU-02 unverified, G6 not qualified. |
