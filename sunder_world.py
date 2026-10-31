@@ -651,6 +651,8 @@ def replay_record(record: dict, backend_factory=Backend) -> list[tuple[TickResul
                     w.grow(command["capacity"])
                 elif op == "create":
                     actual = w.create_body(Body(**command["body"]))
+                    if command["handle"].get("world_id") != record.get("world_id"):
+                        raise WorldError("REPLAY_DIVERGENCE", "foreign create handle recorded")
                     if (actual.slot, actual.generation) != (command["handle"]["slot"], command["handle"]["generation"]):
                         raise WorldError("REPLAY_DIVERGENCE", "generated handle mismatch")
                 else:
