@@ -57,6 +57,20 @@ efficient sparse-body compaction. An adapter's authoring bounds are not physical
 wall contacts. Replay requires independently accepted physics within tolerance;
 bitwise determinism stays unsupported.
 
+**Native hardware handoff suite (2026-10-31, NOT YET RUN on user machine):**
+`RUN_P10_WINDOWS.cmd` invokes the exact existing
+`run_world_sweep.py --full` command and creates a per-run SHA-256-inventoried ZIP
+using `package_p10_evidence.py`. The consolidated full sweep now includes
+`test_native_world.py` as a mandatory D3D12 world-API gate (handle generation,
+growth, collisions/friction, force/impulse, sleep/wake, three snapshot leases,
+backpressure, rejected candidate rollback and two fresh native replays).
+Existing 16/1K authored, GPU CPU-oracle, pool/rail/device and 10K/100K/1M
+separated-pair stress remain mandatory. Each run has immutable evidence paths,
+driver inventory, source/tool hashes, GPU and host timings, and explicit NOT RUN
+statuses after the first failure. [Instructions](P10_RUN_ON_WINDOWS.md).
+The prior hosted GPU hardware NO-GO remains valid; merely preparing a suite
+does **not** qualify or merge P10. Physical thresholds are unchanged.
+
 **Full-sweep attempt on Windows 2025 hosted runner (2026-10-31, NO-GO):** The exact `python run_world_sweep.py --full` command ran on source commit `510192f` in [Actions run 41230865897](https://github.com/Cryosimorgh/Sunder/actions/runs/41230865897). The 17 host-only unit tests PASS and native Zig/DXC compiles nine shaders and DLL (57.14 s). The first native case, an empty authored world, fails at D3D12 context/admission: the only video adapter is Microsoft Hyper-V Video (driver 10.0.26100.1150). This is an **environment gate**, not verified solver failure or GPU-physics PASS. Fail-fast leaves authored 16/1024, native CPU oracle, leases, numerical replays, legacy pool/rail and 10K/100K/1M stress **NOT RUN**. No new physics timing/driver-performance conclusion is permitted. Original immutable per-run evidence is [Actions artifact 13053607373](https://github.com/Cryosimorgh/Sunder/actions/runs/41230865897/artifacts/13053607373), SHA-256 `874cae88d8970b14457317ade4836f58afca7818e36f72a58c2d1a26b8e9a211`. Persistent provenance summary: [P10_NATIVE_ATTEMPT_20261031.json](P10_NATIVE_ATTEMPT_20261031.json). PR #8 remains draft/unmerged; formal G6 and production release remain unqualified.
 
 **Evidence boundary:** The follow-up native qualification review added fail-closed staging cleanup, early-discard error quarantine, transactional resize host-map preparation, a closing gate for asynchronous teardown, full 3D replay numerical fields and run-isolated evidence (`run_world_sweep.py --full`, per-run immutable JSON/logs, source hashes, GPU driver inventory). An injected async-close test initially failed because the test required BACKPRESSURE even after shutdown had started and CLOSED was correct; the test assertion was repaired without changing physical gates. The extended host test suite and native qualification must be evaluated against the final tested SHA before merge. No fresh D3D12 physics measurements are available. Host contract GitHub Actions PASS (10 Python mocked-backend unit tests; Linux runner `41229876886`, commit `93ea51d`) and Windows compile-only GitHub Actions PASS (9 original compute shaders + DLL + syntax, run `41229757701`, commit `5069f6c`). These checks do **not** execute D3D12 physics or independently validate the GPU result. The implementation was written through a GitHub
