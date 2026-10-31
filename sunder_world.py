@@ -319,6 +319,7 @@ class World:
         self._future: Optional[Future] = None
         self._busy = False
         self._closed = False
+        self._faulted = None
         self.tick_id = 0
         self.epoch = 0
         self._accepted_active = np.zeros(config.capacity, dtype=bool)
@@ -346,6 +347,8 @@ class World:
             raise WorldError("CLOSED", "world destroyed")
         if self._busy:
             raise WorldError("BACKPRESSURE", "tick in flight")
+        if self._faulted is not None:
+            raise WorldError("DEVICE_ERROR", self._faulted)
 
     def _edit(self):
         self._ready()
@@ -488,27 +491,38 @@ class World:
         r = NativeResult()
         ok = False
         cause = ""
+        discard_ok = True
+        needs_discard = candidate is not None
         try:
             if candidate is not None:
                 self._backend.stage(candidate)
             ok, r = self._backend.tick()
             if not ok:
                 cause = "native host/device submission failure"
-                self._backend.discard()
             elif r.error:
                 cause = f"GPU rejected candidate: flags {r.error}"
-                self._backend.discard()
             elif r.published != self.config.capacity:
                 ok = False
                 cause = "incomplete GPU publication"
-        except Exception as e:
-            cause = str(e)
-            self._backend.discard()
+            else:
+                needs_discard = False
+        except BaseException as e:
+            cause = f"{type(e).__name__}: {e}"
             ok = False
+        finally:
+            if needs_discard:
+                try:
+                    discard_ok = bool(self._backend.discard())
+                except BaseException as e:
+                    discard_ok = False
+                    cause += f"; candidate discard failed: {type(e).__name__}: {e}"
+                if not discard_ok:
+                    cause += "; staged source could not be safely discarded"
         wall_us = (time.perf_counter_ns() - start) / 1000
         cpu_us = (time.thread_time_ns() - thread_start) / 1000
         with self._lock:
-            accepted = ok and r.error == 0 and r.published == self.config.capacity
+            accepted = (ok and r.error == 0 and
+                        r.published == self.config.capacity and discard_ok)
             if accepted:
                 self.tick_id += 1
                 if candidate is not None:
@@ -517,9 +531,11 @@ class World:
                     self._free = free
                     self.epoch += 1
                 self._cache, self._cache_key = None, None
+            if not discard_ok:
+                self._faulted = cause
             if accepted:
                 status = "ACCEPTED"
-            elif ok and r.error:
+            elif ok and r.error and discard_ok:
                 status = "REJECTED"
             elif not ok and hasattr(self._backend, "host_error") and self._backend.host_error() == 2:
                 status = "BACKPRESSURE"
@@ -637,6 +653,8 @@ class World:
 
     def close(self):
         with self._lock:
+            if self._closed:
+                return
             if self._leases:
                 raise WorldError("BACKPRESSURE", "release snapshots before destruction")
         self._executor.shutdown(wait=True)
