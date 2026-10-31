@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, replace
 import hashlib
 import json
 import math
+import secrets
 from pathlib import Path
 import threading
 import time
@@ -81,6 +82,7 @@ class Body:
 class Handle:
     slot: int
     generation: int
+    world_id: int
 
 
 @dataclass(frozen=True)
@@ -272,7 +274,7 @@ class Snapshot:
 
     def body(self, handle: Handle) -> dict:
         i = handle.slot
-        if (self._closed or i < 0 or i >= len(self._mask) or
+        if (self._closed or handle.world_id != self._owner._world_id or i < 0 or i >= len(self._mask) or
                 not self._mask[i] or self._generations[i] != handle.generation):
             raise WorldError("STALE_HANDLE", "not present in this snapshot")
         a = self._array
@@ -285,7 +287,7 @@ class Snapshot:
         if self._closed:
             raise WorldError("INVALID_LEASE", "snapshot already released")
         for i in np.flatnonzero(self._mask):
-            h = Handle(int(i), int(self._generations[i]))
+            h = Handle(int(i), int(self._generations[i]), self._owner._world_id)
             yield h, self.body(h)
 
     def close(self):
@@ -302,6 +304,7 @@ class Snapshot:
 class World:
     def __init__(self, config: WorldConfig = WorldConfig(), backend_factory=Backend):
         self.config = config
+        self._world_id = secrets.randbits(64)
         self._initial_config = config
         self._lock = threading.RLock()
         self._backend_factory = backend_factory
@@ -348,7 +351,8 @@ class World:
             self._stage_free = list(self._free)
 
     def _lookup(self, h: Handle):
-        if (not isinstance(h, Handle) or not 0 <= h.slot < self.config.capacity or
+        if (not isinstance(h, Handle) or h.world_id != self._world_id or
+                not 0 <= h.slot < self.config.capacity or
                 not self._stage_active[h.slot] or
                 int(self._stage_gen[h.slot]) != h.generation):
             raise WorldError("STALE_HANDLE", "wrong slot/generation")
@@ -375,7 +379,7 @@ class World:
             self._next_gen[i] = gen
             self._stage_active[i] = True
             self._stage_gen[i] = gen
-            h = Handle(i, gen)
+            h = Handle(i, gen, self._world_id)
             self._record("create", handle=asdict(h), body=asdict(body))
             return h
 
@@ -611,6 +615,7 @@ class World:
             hashes = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
                       for p in paths if p.exists()}
             return {"format": "sunder-native-numerical-v1",
+                    "world_id": self._world_id,
                     "configuration": asdict(self._initial_config),
                     "provenance": {"adapter": self._backend.adapter, "sha256": hashes},
                     "steps": list(self._history),
@@ -646,10 +651,13 @@ def replay_record(record: dict, backend_factory=Backend) -> list[tuple[TickResul
                     w.grow(command["capacity"])
                 elif op == "create":
                     actual = w.create_body(Body(**command["body"]))
-                    if asdict(actual) != command["handle"]:
+                    if (actual.slot, actual.generation) != (command["handle"]["slot"], command["handle"]["generation"]):
                         raise WorldError("REPLAY_DIVERGENCE", "generated handle mismatch")
                 else:
-                    h = Handle(**command["handle"])
+                    encoded = command["handle"]
+                    if encoded.get("world_id") != record.get("world_id"):
+                        raise WorldError("REPLAY_DIVERGENCE", "foreign handle recorded")
+                    h = Handle(encoded["slot"], encoded["generation"], w._world_id)
                     if op == "remove":
                         w.remove_body(h)
                     elif op == "update":
@@ -682,7 +690,7 @@ def compare_replays(first, second, atol=2e-5, rtol=2e-5) -> dict:
         if len(a) != len(b):
             return {"equal": False, "first_divergence": {"frame": frame, "field": "count"}}
         for (ha, sa), (hb, sb) in zip(a, b):
-            if ha != hb:
+            if (ha.slot, ha.generation) != (hb.slot, hb.generation):
                 return {"equal": False, "first_divergence": {"frame": frame, "field": "handle"}}
             for field in ("position", "velocity", "angular_velocity", "sleep_frames"):
                 if not np.allclose(sa[field], sb[field], atol=atol, rtol=rtol):
