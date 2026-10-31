@@ -89,13 +89,14 @@ class WorldTests(unittest.TestCase):
             self.assertEqual(w.step().status, "ACCEPTED")
             snap = w.acquire()
             self.assertEqual(snap.body(old)["position"][0], 1 / 128)
+            self.assertEqual(w.step().status, "ACCEPTED")
+            self.assertEqual(snap.body(old)["position"][0], 1 / 128)
+            snap.close()
             w.remove_body(old)
             new = w.create_body(Body((5., 0., 0.)))
             self.assertEqual(old.slot, new.slot)
             self.assertNotEqual(old.generation, new.generation)
             self.assertEqual(w.step().status, "ACCEPTED")
-            self.assertEqual(snap.body(old)["position"][0], 1 / 128)
-            snap.close()
             with w.acquire() as new_snap:
                 with self.assertRaises(WorldError):
                     new_snap.body(old)
