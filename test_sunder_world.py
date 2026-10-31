@@ -22,6 +22,9 @@ class FakeGPU:
     def seed(self, a):
         self.accepted = a.copy()
 
+    def resume_clock(self, tick):
+        self.native_tick = tick
+
     def stage(self, a):
         assert self.pending is None
         self.pending = a.copy()
