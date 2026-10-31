@@ -32,6 +32,8 @@ PH3_API int ph3_seed(Physics3*,const float *soa,const float *planes,uint32_t pla
  * remain unchanged. On failed tick, call ph3_drop_stage to discard the edit. */
 PH3_API int ph3_stage(Physics3*,const float *soa);
 PH3_API int ph3_drop_stage(Physics3*);
+/* Restore the global fixed clock after capacity migration into a fresh context. */
+PH3_API int ph3_resume_clock(Physics3*,uint32_t accepted_ticks,float dt);
 /* Host failure classifier: 0 none, 1 invalid call, 2 lease backpressure,
  * 3 device/record/submission/readback failure. GPU validation is result.error. */
 PH3_API uint32_t ph3_last_host_error(Physics3*);
