@@ -238,7 +238,8 @@ def _set_body(a: np.ndarray, slot: int, generation: int, body: Body, cfg: WorldC
             or not 0 <= body.restitution <= 1 or body.friction < 0
             or (not body.static and (body.mass <= 0 or
                 float(np.float32(body.mass)) <= 0 or
-                not math.isfinite(1 / float(body.mass)))) or body.mass < 0
+                not math.isfinite(1 / float(body.mass)) or
+                not math.isfinite(float(np.float32(1 / float(body.mass)))))) or body.mass < 0
             or (body.static and np.any(v))):
         raise WorldError("INVALID_COMMAND", "invalid body policy/material")
     if any(float(p[i]) - body.radius < cfg.lower[i] or
@@ -254,7 +255,8 @@ def _set_body(a: np.ndarray, slot: int, generation: int, body: Body, cfg: WorldC
         if (not math.isfinite(moment) or moment <= 0 or
                 float(np.float32(moment)) <= 0 or
                 not math.isfinite(1 / moment) or
-                float(np.float32(1 / moment)) <= 0):
+                float(np.float32(1 / moment)) <= 0 or
+                not math.isfinite(float(np.float32(1 / moment)))):
             raise WorldError("INVALID_COMMAND", "inertia out of range")
         a[19, slot] = 1 / mass
         a[24:27, slot] = moment
