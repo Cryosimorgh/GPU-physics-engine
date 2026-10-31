@@ -8,12 +8,13 @@
   "P8b": "CORRECTED and MERGED in PR #5; historical 4072 tick failure preserved",
   "P9": "PR #6 MERGED AS EVIDENCE; FAIL/INCOMPLETE for bitwise qualification",
   "fresh_tests": {
-    "github_action_cpu_world": "PENDING / no workflow run observed at authoring time",
+    "github_action_cpu_world": "PASS: 10 CPU-only host contract tests on Linux runner at commit 93ea51d940b484717c2dcbed57cc67648810a524; run 41229876886 (does not qualify native physics). Further final-HEAD checks to be monitored.",
     "native_staged_publication": "NOT RUN",
     "authored_empty_16_1024": "NOT RUN",
     "native_replay_two_runs": "NOT RUN",
     "legacy_pool_rail": "NOT RUN",
-    "stress_10000_100000_1000000": "NOT RUN"
+    "stress_10000_100000_1000000": "NOT RUN",
+    "windows_native_compile": "PASS: Windows runner built 9 original HLSL shaders and isolated DLL, plus py_compile, at commit 5069f6c327eb1cc8f14c3872961531372cad6b67; run 41229757701. This is a build only, no GPU execution."
   },
   "performance": {
     "gpu_us": {
@@ -41,11 +42,12 @@
   "bounded_regression_command": "python run_world_sweep.py --full",
   "evidence_produced_by_runner": "evidence/p10/world-sweep/consolidated.json",
   "blockers": [
-    "Windows D3D12 build and native correctness not executable in this authoring environment",
     "Transactional stage/rollback, snapshot leases and capacity growth not GPU validated",
     "Two independent native numerical replay runs not collected",
     "Legacy compatibility and 10K/100K/1M repeated on modified DLL not collected",
-    "No production-path p50/p95/p99 or failure evidence for new implementation"
+    "No production-path p50/p95/p99 or failure evidence for new implementation",
+    "Actual Windows/D3D12 GPU physics, lease/device failure and replay qualification NOT RUN",
+    "Fresh hardware performance sampling for API NOT RUN"
   ],
   "excluded_features": [
     "new 3D shape families",
@@ -55,5 +57,6 @@
     "general ECS",
     "sparse GPU compaction"
   ],
-  "merge_authorized": false
+  "merge_authorized": false,
+  "execution_notes": "Host code contract and native compilation were verified by GitHub Actions; native D3D12 runtime physics remains not run. CPU-only contract 10 tests PASS; do not mistake for 3D numerical oracle."
 }
