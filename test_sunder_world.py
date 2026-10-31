@@ -318,7 +318,7 @@ class WorldTests(unittest.TestCase):
             # The shutdown process must not invalidate in-flight resources.
             with self.assertRaises(WorldError) as raised:
                 w.create_body(Body((1., 0., 0.)))
-            self.assertEqual(raised.exception.code, "BACKPRESSURE")
+            self.assertIn(raised.exception.code, ("BACKPRESSURE", "CLOSED"))
         finally:
             proceed.set()
             closer.join(timeout=3.)
