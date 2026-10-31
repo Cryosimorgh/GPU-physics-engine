@@ -2,11 +2,11 @@
 No Python contact solver is used to produce the GPU result.
 """
 from pathlib import Path
-import argparse,ctypes as C,hashlib,json,math,struct,time,traceback
+import argparse,ctypes as C,hashlib,json,math,struct,time,traceback,os
 import numpy as np
 R=Path(__file__).resolve().parent
 BUILD=R/'evidence/p10/build'
-E=R/'evidence/p10'
+E=Path(os.environ.get('SUNDER_P10_EVIDENCE_DIR',str(R/'evidence/p10')))
 U=np.finfo(np.float32).eps
 
 class Result(C.Structure):
