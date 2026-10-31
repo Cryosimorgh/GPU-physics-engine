@@ -21,9 +21,10 @@ RUN_ID = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid
 RUN = BASE / "runs" / RUN_ID
 SOURCES = ("physics3.c", "physics3.h", "physics3.hlsl", "physics3-schema.json",
            "sunder_world.py", "headless_demo.py", "test_physics3.py",
-           "test_sunder_world.py", "run_world_sweep.py", "build_physics3.py")
-CASES = ("cpu-world", "build", "world-empty", "world-16", "world-1024",
-         "native-physics", "legacy-pool-rail", "native-stress")
+           "test_sunder_world.py", "test_native_world.py", "run_world_sweep.py",
+           "package_p10_evidence.py", "build_physics3.py")
+CASES = ("cpu-world", "build", "world-empty", "native-world", "world-16",
+         "world-1024", "native-physics", "legacy-pool-rail", "native-stress")
 
 
 def digest():
@@ -71,6 +72,18 @@ def execute(name, args, result, timeout=600, output=None):
            "status": "PASS" if ok else "FAIL", "failure": failure,
            "elapsed_wall_s": time.perf_counter() - start,
            "log": str(log.relative_to(ROOT))}
+    if name == "native-world" and ok:
+        try:
+            native = json.loads((RUN / "native-world.json").read_text())
+            if native.get("status") != "PASS" or native.get("not_run"):
+                raise ValueError("native-world GPU cases incomplete")
+            row["metrics"] = native.get("timing", {})
+            row["adapter"] = native.get("adapters", [])
+            row["cases"] = native.get("cases", [])
+            row["output"] = str((RUN / "native-world.json").relative_to(ROOT))
+        except (OSError, ValueError, KeyError) as exc:
+            row.update(status="FAIL", failure="invalid native-world evidence: "+str(exc))
+            ok = False
     if output is not None and ok:
         try:
             measured = json.loads(output.read_text())
@@ -113,6 +126,7 @@ def main():
         "unexecuted": list(CASES), "cpu_oracle_overhead": "separate native test results, not production timings",
         "stress_topology": "separated collision-bearing pairs, degree 1; not arbitrary connected authored world",
         "P9_bitwise": "INCOMPLETE / UNSUPPORTED",
+        "handoff": "Double-click RUN_P10_WINDOWS.cmd; send latest ZIP in P10-RESULTS-TO-SEND",
         "production_release": "NOT QUALIFIED"
     }
     try:
@@ -125,6 +139,7 @@ def main():
             ("world-empty", ["headless_demo.py", "--capacity", "1", "--bodies",
                              "0", "--steps", "4", "--replay", "--out",
                              str(RUN / "world-empty.json")], 180, RUN / "world-empty.json"),
+            ("native-world", ["test_native_world.py"], 240, None),
             ("world-16", ["headless_demo.py", "--capacity", "16", "--bodies",
                           "16", "--steps", "8", "--replay", "--out",
                           str(RUN / "world-16.json")], 180, RUN / "world-16.json"),
@@ -134,7 +149,7 @@ def main():
             ("native-physics", ["test_physics3.py", "--smoke"], 300, None),
             ("legacy-pool-rail", ["dev_test.py", "full"], 1200, None),
             ("native-stress", ["test_physics3.py", "--stress",
-                               "10000", "100000", "1000000"], 900, None)
+                               "10000", "100000", "1000000"], 1800, None)
         ]
         for name, command, timeout, output in tests:
             ok = execute(name, command, result, timeout, output)
