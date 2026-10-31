@@ -199,6 +199,32 @@ class WorldTests(unittest.TestCase):
                     snap.body(one)
                 self.assertEqual(snap.body(two)["position"], (1., 0., 0.))
 
+    def test_discard_failure_quarantines_world(self):
+        with self.world() as w:
+            h = w.create_body(Body((0., 0., 0.)))
+            w._backend.rejected_once = True
+            w._backend.discard = lambda: False
+            result = w.step()
+            self.assertEqual(result.status, "DEVICE_ERROR")
+            self.assertIn("could not be safely discarded", result.cause)
+            with self.assertRaises(WorldError) as raised:
+                w.step()
+            self.assertEqual(raised.exception.code, "DEVICE_ERROR")
+
+    def test_discard_exception_does_not_leave_busy_world(self):
+        with self.world() as w:
+            w.create_body(Body((0., 0., 0.)))
+            w._backend.rejected_once = True
+            def explode():
+                raise RuntimeError("simulated fence failure")
+            w._backend.discard = explode
+            result = w.step()
+            self.assertEqual(result.status, "DEVICE_ERROR")
+            self.assertFalse(w._busy)
+            self.assertIn("fence failure", result.cause)
+            with self.assertRaises(WorldError):
+                w.create_body(Body((1., 0., 0.)))
+
     def test_lease_prevents_destroy(self):
         w = self.world()
         snap = w.acquire()
