@@ -1,0 +1,163 @@
+{
+  "date": "2026-10-31",
+  "repository": "Cryosimorgh/Sunder",
+  "branch": "p10-headless-world-api-20261031",
+  "baseline_main": "0eb15233e37a698bc6b28c8916afbcb8d6cbcb8a",
+  "decision": "NO-GO: native hardware qualification suite prepared but actual supported-hardware execution unverified; hosted Hyper-V attempt failed admission",
+  "historical_native_3d": "Earlier merged P10 native bounded 3D evidence; NOT evidence for the new wrapper",
+  "P8b": "CORRECTED and MERGED in PR #5; historical 4072 tick failure preserved",
+  "P9": "PR #6 MERGED AS EVIDENCE; FAIL/INCOMPLETE for bitwise qualification",
+  "fresh_tests": {
+    "github_action_cpu_world": "PASS: 10 CPU-only host contract tests on Linux runner at commit 93ea51d940b484717c2dcbed57cc67648810a524; run 41229876886 (does not qualify native physics). Further final-HEAD checks to be monitored.",
+    "native_staged_publication": "NOT RUN: Windows runner cannot create D3D12 context",
+    "authored_empty_16_1024": "world-empty FAIL (hardware unavailable), 16 and 1024 NOT RUN",
+    "native_replay_two_runs": "NOT RUN: no native D3D12 adapter",
+    "legacy_pool_rail": "NOT RUN in full-sweep attempt due fail-fast; prior historical evidence remains separate",
+    "stress_10000_100000_1000000": "NOT RUN in full-sweep attempt due fail-fast",
+    "windows_native_compile": "PASS: Zig 0.15.2 built isolated D3D12 DLL and 9 HLSL shaders during full-sweep run 41230865897",
+    "extended_host_adversarial": "PASS: 17/17 CPU-host/mock tests on Windows run 41230865897, source commit 510192f99152b93fdd6c406bf696dbf926adaa28",
+    "native_hardware_full_sweep": "NO-GO: attempted python run_world_sweep.py --full on GitHub-hosted Windows Server 2025; only Microsoft Hyper-V Video (driver 10.0.26100.1150). world-empty cannot create/admit D3D12 context. First failing gate. 16/1024, oracle, legacy and large stress NOT RUN."
+  },
+  "performance": {
+    "gpu_us": {
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "worst": null
+    },
+    "cpu_us": {
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "worst": null
+    },
+    "deadline_misses": null,
+    "committed_bytes": null,
+    "samples": 0,
+    "note": "No GPU tick ran on new world implementation. All new host/GPU percentile values, deadline misses and committed bytes remain unmeasured. Historical baseline is not transferred."
+  },
+  "workload_categories": {
+    "authored": "empty/16/1024 authored moving/colliding spheres",
+    "legacy": "pool + rail + previous independent oracle",
+    "stress": "separated pair contacts, not dense or large-island authored"
+  },
+  "bounded_regression_command": "python run_world_sweep.py --full (exact, no --skip-stress)",
+  "evidence_produced_by_runner": "evidence/p10/world-sweep/runs/<run-id>/consolidated.json; first top-level evidence/p10/world-sweep/consolidated.json retained",
+  "blockers": [
+    "Hosted Windows machine exposes Microsoft Hyper-V Video only; native ph3_open returns ALLOCATION_OR_DEVICE",
+    "Run exact full native sweep on Windows x64 with a functioning hardware D3D12 adapter; preserve unique evidence directory",
+    "Validate actual GPU staged rejection, independent oracles, snapshot leases, topology/physics and replay twice",
+    "Run legacy pool/rail and 10K/100K/1M collision-bearing independent-pair cases on supported hardware",
+    "Collect real GPU and host timings, misses, committed bytes and failure diagnostics"
+  ],
+  "excluded_features": [
+    "new 3D shape families",
+    "terrain",
+    "joints",
+    "viewer",
+    "general ECS",
+    "sparse GPU compaction"
+  ],
+  "merge_authorized": false,
+  "execution_notes": "Earlier CPU/compilation CI passes and newly added CPU tests are not a substitute for native GPU execution. No new GPU timing, memory or replay measurements are claimed.",
+  "review_20261031": {
+    "verdict": "NO-GO: cannot claim native correctness from Linux container or compile-only hosted CI",
+    "examined": {
+      "transactional_stage": "source reviewed; native D3D12 failure-injection unverified",
+      "stale_handle": "opaque world identity + generation on host",
+      "capacity_growth": "prepare host maps before retiring old context; old-context retirement failure quarantines world",
+      "async_shutdown": "serial worker shutdown waits; mutations blocked while closing",
+      "replay": "inspect full accepted 3D quaternion, forces, materials, spin, mass in first-divergence comparison"
+    },
+    "source_changes": [
+      {
+        "commit": "1b09bee57d66d1972e753fee154c4d6fd1beb4c8",
+        "change": "fail-closed staged candidate discard; quarantine if rollback uncertain"
+      },
+      {
+        "commit": "daebe04227783393595fb38c82f0a738d899e59c",
+        "change": "transactional capacity growth with precomputed host maps and quarantine on failed retirement"
+      },
+      {
+        "commit": "238c32282c4da97850d7f0d666c4ab8790a57a8f",
+        "change": "complete public snapshot/replay numerical fields and closing state"
+      },
+      {
+        "commit": "fbb64c43af00dad766438a7eb54409aecf6db239",
+        "change": "unique immutable evidence run directories, hashes, driver information and earliest failure"
+      },
+      {
+        "commit": "37d742e985360d414e1aecc3e97dbb620d5ebcb3",
+        "change": "separate configurable deadline, GPU fixed dt, and host fixed dt misses"
+      }
+    ],
+    "adversarial_cpu_tests": "Extended host suite includes injected candidate rollback failure, capacity seed failure, held leases, asynchronous mutation, closing and replay quaternion divergence; CI results for latest revision must be checked",
+    "native_runtime_environment": "Linux-only tool container; no functional D3D12 adapter. Hosted Windows build-only CI is not a GPU physics gate.",
+    "evidence_isolation": "Each full sweep writes evidence/p10/world-sweep/runs/<UTC>-<id>/consolidated.json; first-ever top-level consolidated.json is preserved and never overwritten, with run-index.jsonl mapping attempts.",
+    "mandatory_full_command": "python run_world_sweep.py --full",
+    "merge_authorized": false
+  },
+  "real_windows_attempt": {
+    "status": "NO-GO",
+    "source_commit": "510192f99152b93fdd6c406bf696dbf926adaa28",
+    "run_id": "20261031T184500Z-0618f636",
+    "workflow_run": "https://github.com/Cryosimorgh/Sunder/actions/runs/41230865897",
+    "artifact": "https://github.com/Cryosimorgh/Sunder/actions/runs/41230865897/artifacts/13053607373",
+    "artifact_sha256": "874cae88d8970b14457317ade4836f58afca7818e36f72a58c2d1a26b8e9a211",
+    "source_hashes_and_driver": "docs/P10_NATIVE_ATTEMPT_20261031.json",
+    "commands": [
+      "python -m unittest test_sunder_world -q",
+      "python build_physics3.py",
+      "python headless_demo.py --capacity 1 --bodies 0 --steps 4 --replay",
+      "python run_world_sweep.py --full"
+    ],
+    "case_matrix": [
+      [
+        "cpu-world",
+        "PASS",
+        17
+      ],
+      [
+        "build",
+        "PASS",
+        "9 shaders + DLL"
+      ],
+      [
+        "world-empty",
+        "FAIL",
+        "D3D12 context/admission"
+      ],
+      [
+        "world-16",
+        "NOT RUN"
+      ],
+      [
+        "world-1024",
+        "NOT RUN"
+      ],
+      [
+        "native-physics",
+        "NOT RUN"
+      ],
+      [
+        "legacy-pool-rail",
+        "NOT RUN"
+      ],
+      [
+        "native-stress",
+        "NOT RUN"
+      ]
+    ]
+  },
+  "manual_windows_handoff_suite": {
+    "status": "PREPARED / REAL HARDWARE RESULTS NOT YET RECEIVED",
+    "one_click": "RUN_P10_WINDOWS.cmd",
+    "documentation": "docs/P10_RUN_ON_WINDOWS.md",
+    "full_command": "python run_world_sweep.py --full",
+    "new_mandatory_case": "test_native_world.py (8 native D3D12 application-world scenarios; no FakeGPU)",
+    "legacy_cases": "empty/16/1024 authored, native double-precision CPU oracle, full pool/rail/device, 10K/100K/1M separated collision-pair stress",
+    "host_test": "test_p10_packaging.py verifies immutable ZIP manifests and distinct retries",
+    "output": "P10-RESULTS-TO-SEND/Sunder-P10-<run-id>-<GO|NO-GO>-<UTC>-<nonce>.zip",
+    "disposition": "NO-GO until user provides complete hardware D3D12 evidence on the tested PR head; previous hosted Hyper-V hardware failure remains valid"
+  }
+}
