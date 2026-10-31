@@ -279,14 +279,25 @@ class Snapshot:
         self._generations.setflags(write=False)
 
     def body(self, handle: Handle) -> dict:
+        if not isinstance(handle, Handle):
+            raise WorldError("STALE_HANDLE", "invalid handle type")
         i = handle.slot
         if (self._closed or handle.world_id != self._owner._world_id or i < 0 or i >= len(self._mask) or
                 not self._mask[i] or self._generations[i] != handle.generation):
             raise WorldError("STALE_HANDLE", "not present in this snapshot")
         a = self._array
+        inv_mass = float(a[19, i])
         return {"position": tuple(map(float, a[:3, i])),
                 "velocity": tuple(map(float, a[3:6, i])),
+                "orientation": tuple(map(float, a[6:10, i])),
                 "angular_velocity": tuple(map(float, a[10:13, i])),
+                "force": tuple(map(float, a[13:16, i])),
+                "torque": tuple(map(float, a[16:19, i])),
+                "mass": 1. / inv_mass if inv_mass > 0 else 0.,
+                "radius": float(a[20, i]),
+                "restitution": float(a[21, i]),
+                "friction": float(a[22, i]),
+                "static": inv_mass == 0,
                 "sleep_frames": float(a[23, i])}
 
     def entries(self):
@@ -319,6 +330,7 @@ class World:
         self._future: Optional[Future] = None
         self._busy = False
         self._closed = False
+        self._closing = False
         self._faulted = None
         self.tick_id = 0
         self.epoch = 0
@@ -343,8 +355,8 @@ class World:
             raise
 
     def _ready(self):
-        if self._closed:
-            raise WorldError("CLOSED", "world destroyed")
+        if self._closed or self._closing:
+            raise WorldError("CLOSED", "world is closing or destroyed")
         if self._busy:
             raise WorldError("BACKPRESSURE", "tick in flight")
         if self._faulted is not None:
@@ -542,6 +554,7 @@ class World:
                 cause = "all nonaccepted native snapshot slots are leased"
             else:
                 status = "DEVICE_ERROR"
+                self._faulted = cause or "native state may be unsafe after device failure"
             report = TickResult(status, self.tick_id, self.epoch, int(r.error),
                                 int(r.contacts), int(self._accepted_active.sum()),
                                 float(r.phases_us[7]), cpu_us, int(r.committed),
@@ -676,6 +689,7 @@ class World:
                 return
             if self._leases:
                 raise WorldError("BACKPRESSURE", "release snapshots before destruction")
+            self._closing = True
         self._executor.shutdown(wait=True)
         with self._lock:
             self._backend.close()
@@ -738,14 +752,16 @@ def compare_replays(first, second, atol=2e-5, rtol=2e-5) -> dict:
     if len(first) != len(second):
         return {"equal": False, "first_divergence": "frame_count"}
     for frame, ((r0, a), (r1, b)) in enumerate(zip(first, second)):
-        if (r0.status, r0.tick, r0.epoch) != (r1.status, r1.tick, r1.epoch):
+        if (r0.status, r0.tick, r0.epoch, r0.error_bits, r0.active) != (r1.status, r1.tick, r1.epoch, r1.error_bits, r1.active):
             return {"equal": False, "first_divergence": {"frame": frame, "field": "result"}}
         if len(a) != len(b):
             return {"equal": False, "first_divergence": {"frame": frame, "field": "count"}}
         for (ha, sa), (hb, sb) in zip(a, b):
             if (ha.slot, ha.generation) != (hb.slot, hb.generation):
                 return {"equal": False, "first_divergence": {"frame": frame, "field": "handle"}}
-            for field in ("position", "velocity", "angular_velocity", "sleep_frames"):
+            for field in ("position", "velocity", "orientation", "angular_velocity",
+                          "force", "torque", "mass", "radius", "restitution",
+                          "friction", "sleep_frames", "static"):
                 if not np.allclose(sa[field], sb[field], atol=atol, rtol=rtol):
                     diff = float(np.max(np.abs(np.asarray(sa[field]) - np.asarray(sb[field]))))
                     return {"equal": False, "first_divergence":
