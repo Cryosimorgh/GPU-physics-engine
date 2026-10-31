@@ -184,6 +184,35 @@ class WorldTests(unittest.TestCase):
         run2[1][1][0][1]["position"] = (999, 0, 0)
         self.assertFalse(compare_replays(runs[0], run2)["equal"])
 
+    def test_failed_capacity_growth_preserves_accepted_state(self):
+        class SeedFailure(FakeGPU):
+            def seed(self, a):
+                if self.n > 2:
+                    raise RuntimeError("injected new-context seed failure")
+                super().seed(a)
+        cfg = WorldConfig(capacity=2, contact_capacity=32)
+        with World(cfg, backend_factory=SeedFailure) as w:
+            h = w.create_body(Body((2., 0., 0.), (1., 0., 0.)))
+            self.assertEqual(w.step().status, "ACCEPTED")
+            old_tick, old_epoch = w.tick_id, w.epoch
+            with self.assertRaisesRegex(RuntimeError, "seed failure"):
+                w.grow(4)
+            self.assertEqual((w.tick_id, w.epoch), (old_tick, old_epoch))
+            self.assertEqual(w.config.capacity, 2)
+            with w.acquire() as snap:
+                self.assertEqual(snap.body(h)["position"][0], 2 + 1 / 128)
+            self.assertEqual(w.step().status, "ACCEPTED")
+
+    def test_growth_rejects_outstanding_lease(self):
+        with self.world(2) as w:
+            snap = w.acquire()
+            with self.assertRaises(WorldError) as context:
+                w.grow(4)
+            self.assertEqual(context.exception.code, "BACKPRESSURE")
+            snap.close()
+            w.grow(4)
+            self.assertEqual(w.config.capacity, 4)
+
     def test_cross_world_handles_are_rejected(self):
         with self.world(2) as first, self.world(2) as second:
             one = first.create_body(Body((0., 0., 0.)))
