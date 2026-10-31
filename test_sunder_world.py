@@ -1,5 +1,6 @@
 """CPU-only orchestration/rollback tests. FakeGPU is NOT a physics qualification."""
 import unittest
+import threading
 from dataclasses import asdict
 import numpy as np
 
@@ -253,6 +254,77 @@ class WorldTests(unittest.TestCase):
             self.assertIn("fence failure", result.cause)
             with self.assertRaises(WorldError):
                 w.create_body(Body((1., 0., 0.)))
+
+    def test_async_mutation_and_growth_are_blocked(self):
+        started = threading.Event()
+        proceed = threading.Event()
+        class BlockingGPU(FakeGPU):
+            def tick(self):
+                started.set()
+                if not proceed.wait(3.):
+                    raise RuntimeError("test worker did not resume")
+                return super().tick()
+        w = World(WorldConfig(capacity=2, contact_capacity=32),
+                  backend_factory=BlockingGPU)
+        try:
+            w.create_body(Body((0., 0., 0.)))
+            f = w.step_async()
+            self.assertTrue(started.wait(2.))
+            for action in (
+                lambda: w.create_body(Body((1., 0., 0.))),
+                lambda: w.grow(4),
+                lambda: w.acquire(),
+                lambda: w.step_async()):
+                with self.assertRaises(WorldError) as context:
+                    action()
+                self.assertEqual(context.exception.code, "BACKPRESSURE")
+            proceed.set()
+            self.assertEqual(f.result(3.).status, "ACCEPTED")
+        finally:
+            proceed.set()
+            w.close()
+
+    def test_replay_detects_orientation_material_divergence(self):
+        with self.world(2) as w:
+            w.create_body(Body((0., 0., 0.)))
+            w.step()
+            recording = w.record()
+        a = replay_record(recording, FakeGPU)
+        b = replay_record(recording, FakeGPU)
+        self.assertTrue(compare_replays(a, b)["equal"])
+        b[0][1][0][1]["orientation"] = (1., 0., 0., 0.)
+        detail = compare_replays(a, b)
+        self.assertFalse(detail["equal"])
+        self.assertEqual(detail["first_divergence"]["field"], "orientation")
+
+    def test_close_waits_for_pending_async_tick(self):
+        started = threading.Event()
+        proceed = threading.Event()
+        class BlockingGPU(FakeGPU):
+            def tick(self):
+                started.set()
+                if not proceed.wait(3.):
+                    raise RuntimeError("test worker did not resume")
+                return super().tick()
+        w = World(WorldConfig(capacity=2, contact_capacity=32),
+                  backend_factory=BlockingGPU)
+        w.create_body(Body((0., 0., 0.)))
+        future = w.step_async()
+        self.assertTrue(started.wait(2.))
+        result = []
+        closer = threading.Thread(target=lambda: (w.close(), result.append("closed")))
+        closer.start()
+        try:
+            # The shutdown process must not invalidate in-flight resources.
+            with self.assertRaises(WorldError) as raised:
+                w.create_body(Body((1., 0., 0.)))
+            self.assertEqual(raised.exception.code, "BACKPRESSURE")
+        finally:
+            proceed.set()
+            closer.join(timeout=3.)
+        self.assertEqual(future.result(3.).status, "ACCEPTED")
+        self.assertEqual(result, ["closed"])
+        self.assertTrue(w._closed)
 
     def test_lease_prevents_destroy(self):
         w = self.world()
