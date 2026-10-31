@@ -169,6 +169,21 @@ class WorldTests(unittest.TestCase):
         run2[1][1][0][1]["position"] = (999, 0, 0)
         self.assertFalse(compare_replays(runs[0], run2)["equal"])
 
+    def test_cross_world_handles_are_rejected(self):
+        with self.world(2) as first, self.world(2) as second:
+            one = first.create_body(Body((0., 0., 0.)))
+            two = second.create_body(Body((1., 0., 0.)))
+            self.assertEqual((one.slot, one.generation), (two.slot, two.generation))
+            self.assertNotEqual(one.world_id, two.world_id)
+            with self.assertRaises(WorldError) as context:
+                second.remove_body(one)
+            self.assertEqual(context.exception.code, "STALE_HANDLE")
+            second.step()
+            with second.acquire() as snap:
+                with self.assertRaises(WorldError):
+                    snap.body(one)
+                self.assertEqual(snap.body(two)["position"], (1., 0., 0.))
+
     def test_lease_prevents_destroy(self):
         w = self.world()
         snap = w.acquire()
