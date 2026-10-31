@@ -25,6 +25,16 @@ Existing P10 native 3D foundation evidence is a different qualification
 boundary. The world API branch remains **NO-GO / unmerged** until those
 native gates pass; P9 bitwise replay remains unqualified.
 
+## Run the full P10 native suite on your Windows GPU
+
+To collect the remaining PR #8 qualification evidence, follow
+[the Windows one-click guide](docs/P10_RUN_ON_WINDOWS.md), then double-click
+`RUN_P10_WINDOWS.cmd` from a clean Git checkout of
+`p10-headless-world-api-20261031`. Upload the resulting ZIP from
+`P10-RESULTS-TO-SEND` even if the suite reports NO-GO. This exercises a
+real hardware D3D12 adapter and does not substitute mock physics. The earlier
+hosted cloud adapter could compile shaders but could not run GPU physics.
+
 ## Native 3D foundation (P10)
 
 The headless 3D sphere/sphere and sphere/plane foundation lives in `physics3.*`.
