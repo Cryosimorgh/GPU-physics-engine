@@ -123,6 +123,7 @@ class Backend:
             "stage": ([C.c_void_p, C.c_void_p], C.c_int),
             "drop_stage": ([C.c_void_p], C.c_int),
             "last_host_error": ([C.c_void_p], C.c_uint32),
+            "resume_clock": ([C.c_void_p, C.c_uint32, C.c_float], C.c_int),
             "tick": ([C.c_void_p, C.c_float, C.c_void_p, C.c_float, C.c_uint32, C.POINTER(NativeResult)], C.c_int),
             "read": ([C.c_void_p, C.c_void_p], C.c_int),
             "acquire": ([C.c_void_p, C.POINTER(NativeLease)], C.c_int),
@@ -144,6 +145,10 @@ class Backend:
     def seed(self, a: np.ndarray):
         if not self.dll.ph3_seed(self.ptr, a.ctypes.data, None, 0):
             raise WorldError("DEVICE_ERROR", "initial seed failed")
+
+    def resume_clock(self, tick: int):
+        if not self.dll.ph3_resume_clock(self.ptr, tick, np.float32(self.cfg.dt)):
+            raise WorldError("DEVICE_ERROR", "native clock migration failed")
 
     def stage(self, a: np.ndarray):
         if not self.dll.ph3_stage(self.ptr, a.ctypes.data):
@@ -580,6 +585,7 @@ class World:
             fresh = self._backend_factory(new_cfg)
             try:
                 fresh.seed(expanded)
+                fresh.resume_clock(self.tick_id)
             except BaseException:
                 fresh.close()
                 raise
