@@ -122,6 +122,7 @@ class Backend:
             "seed": ([C.c_void_p, C.c_void_p, C.c_void_p, C.c_uint32], C.c_int),
             "stage": ([C.c_void_p, C.c_void_p], C.c_int),
             "drop_stage": ([C.c_void_p], C.c_int),
+            "last_host_error": ([C.c_void_p], C.c_uint32),
             "tick": ([C.c_void_p, C.c_float, C.c_void_p, C.c_float, C.c_uint32, C.POINTER(NativeResult)], C.c_int),
             "read": ([C.c_void_p, C.c_void_p], C.c_int),
             "acquire": ([C.c_void_p, C.POINTER(NativeLease)], C.c_int),
@@ -158,6 +159,9 @@ class Backend:
                                     g.ctypes.data, np.float32(self.cfg.cell_size),
                                     0, C.byref(r)))
         return ok, r
+
+    def host_error(self):
+        return int(self.dll.ph3_last_host_error(self.ptr))
 
     def read(self) -> np.ndarray:
         a = np.empty((48, self.n), dtype=np.float32)
@@ -488,7 +492,15 @@ class World:
                     self._free = free
                     self.epoch += 1
                 self._cache, self._cache_key = None, None
-            status = "ACCEPTED" if accepted else ("REJECTED" if ok and r.error else "DEVICE_ERROR")
+            if accepted:
+                status = "ACCEPTED"
+            elif ok and r.error:
+                status = "REJECTED"
+            elif not ok and hasattr(self._backend, "host_error") and self._backend.host_error() == 2:
+                status = "BACKPRESSURE"
+                cause = "all nonaccepted native snapshot slots are leased"
+            else:
+                status = "DEVICE_ERROR"
             report = TickResult(status, self.tick_id, self.epoch, int(r.error),
                                 int(r.contacts), int(self._accepted_active.sum()),
                                 float(r.phases_us[7]), cpu_us, int(r.committed),
