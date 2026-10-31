@@ -219,9 +219,12 @@ def _set_body(a: np.ndarray, slot: int, generation: int, body: Body, cfg: WorldC
     p, v = _vector(body.position), _vector(body.velocity)
     scalars = (body.mass, body.radius, body.restitution, body.friction)
     if (not all(math.isfinite(float(x)) and math.isfinite(float(np.float32(x))) for x in scalars)
-            or body.radius <= 0 or body.radius >= cfg.cell_size / 2
+            or body.radius <= 0 or float(np.float32(body.radius)) <= 0
+            or body.radius >= cfg.cell_size / 2
             or not 0 <= body.restitution <= 1 or body.friction < 0
-            or (not body.static and body.mass <= 0) or body.mass < 0
+            or (not body.static and (body.mass <= 0 or
+                float(np.float32(body.mass)) <= 0 or
+                not math.isfinite(1 / float(body.mass)))) or body.mass < 0
             or (body.static and np.any(v))):
         raise WorldError("INVALID_COMMAND", "invalid body policy/material")
     if any(float(p[i]) - body.radius < cfg.lower[i] or
@@ -395,7 +398,11 @@ class World:
                         float(a[22, i]), a[19, i] == 0)
             body = replace(body, **changes)
             trial = a[:, i].copy()
-            _set_body(a, i, h.generation, body, self.config)
+            try:
+                _set_body(a, i, h.generation, body, self.config)
+            except BaseException:
+                a[:, i] = trial
+                raise
             # Preserve spin, orientation, forces, and sleep unless made static.
             if not body.static:
                 a[6:19, i] = trial[6:19]
@@ -495,7 +502,7 @@ class World:
     def step_async(self) -> Future:
         with self._lock:
             self._ready()
-            candidate = self._stage_state
+            candidate = self._stage_state if any(c['op'] != 'grow' for c in self._commands) else None
             active = self._stage_active
             gen = self._stage_gen
             free = self._stage_free
@@ -579,7 +586,7 @@ class World:
                 raise WorldError("BACKPRESSURE", "wait for submitted tick")
             directory = ROOT / self.config.shader_dir
             paths = [directory / "physics3.dll", ROOT / "physics3.hlsl",
-                     ROOT / "physics3-schema.json"]
+                     ROOT / "physics3-schema.json", directory / "manifest.json"]
             hashes = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
                       for p in paths if p.exists()}
             return {"format": "sunder-native-numerical-v1",
