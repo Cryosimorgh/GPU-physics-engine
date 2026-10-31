@@ -10,6 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import uuid
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
@@ -59,7 +60,7 @@ def main():
         # Never overwrite an earlier ZIP from this run.
         label = "GO" if result.get("qualified") else "NO-GO"
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        name = f"Sunder-P10-{run.name}-{label}-{stamp}.zip"
+        name = f"Sunder-P10-{run.name}-{label}-{stamp}-{uuid.uuid4().hex[:6]}.zip"
         path = out_dir/name
         manifest = {
             "schema": "sunder-p10-windows-evidence-archive-v1",
