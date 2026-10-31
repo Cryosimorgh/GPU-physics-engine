@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-31",
+  "repository": "Cryosimorgh/Sunder",
+  "branch": "p10-headless-world-api-20261031",
+  "baseline_main": "0eb15233e37a698bc6b28c8916afbcb8d6cbcb8a",
+  "decision": "NO-GO: new application world API has not been executed on Windows/D3D12",
+  "historical_native_3d": "Earlier merged P10 native bounded 3D evidence; NOT evidence for the new wrapper",
+  "P8b": "CORRECTED and MERGED in PR #5; historical 4072 tick failure preserved",
+  "P9": "PR #6 MERGED AS EVIDENCE; FAIL/INCOMPLETE for bitwise qualification",
+  "fresh_tests": {
+    "github_action_cpu_world": "PENDING / no workflow run observed at authoring time",
+    "native_staged_publication": "NOT RUN",
+    "authored_empty_16_1024": "NOT RUN",
+    "native_replay_two_runs": "NOT RUN",
+    "legacy_pool_rail": "NOT RUN",
+    "stress_10000_100000_1000000": "NOT RUN"
+  },
+  "performance": {
+    "gpu_us": {
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "worst": null
+    },
+    "cpu_us": {
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "worst": null
+    },
+    "deadline_misses": null,
+    "committed_bytes": null,
+    "samples": 0,
+    "note": "No sample collected for the changed application/world code; no speed or real-time claim."
+  },
+  "workload_categories": {
+    "authored": "empty/16/1024 authored moving/colliding spheres",
+    "legacy": "pool + rail + previous independent oracle",
+    "stress": "separated pair contacts, not dense or large-island authored"
+  },
+  "bounded_regression_command": "python run_world_sweep.py --full",
+  "evidence_produced_by_runner": "evidence/p10/world-sweep/consolidated.json",
+  "blockers": [
+    "Windows D3D12 build and native correctness not executable in this authoring environment",
+    "Transactional stage/rollback, snapshot leases and capacity growth not GPU validated",
+    "Two independent native numerical replay runs not collected",
+    "Legacy compatibility and 10K/100K/1M repeated on modified DLL not collected",
+    "No production-path p50/p95/p99 or failure evidence for new implementation"
+  ],
+  "excluded_features": [
+    "new 3D shape families",
+    "terrain",
+    "joints",
+    "viewer",
+    "general ECS",
+    "sparse GPU compaction"
+  ],
+  "merge_authorized": false
+}
