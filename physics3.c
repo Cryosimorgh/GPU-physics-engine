@@ -6,7 +6,7 @@
 #include <limits.h>
 typedef struct Lease3 {Ph3Lease value;void *fence;uint64_t completion;int release;} Lease3;
 struct Physics3 {
- StorageDevice *d;uint32_t n,capacity,iterations,buckets,planes,tick,generation,accepted,seeded,fixed_dt,pending;
+ StorageDevice *d;uint32_t n,capacity,iterations,buckets,planes,tick,generation,accepted,seeded,fixed_dt,pending,last_host_error;
  uint64_t context,serial,slots[3],slot_serial[3],trial,grid,contacts,control,free_state,plane,readback,upload,edit;
  uint64_t state_bytes,grid_bytes,contact_bytes,read_bytes;Lease3 leases[32];
 };
@@ -78,10 +78,14 @@ int ph3_drop_stage(Physics3 *p){
 }
 static uint32_t bits(float f){uint32_t u;memcpy(&u,&f,4);return u;}
 static int dispatch3(Physics3 *p,unsigned pass,uint32_t count,const uint64_t *h,const uint32_t *k){return s_bind(p->d,h,k)&&s_dispatch(p->d,pass,count?count:1);}
+uint32_t ph3_last_host_error(Physics3 *p){return p?p->last_host_error:3;}
 int ph3_tick(Physics3 *p,float dt,const float *gravity,float cell,uint32_t inject,Ph3Result *r){
+ if(p)p->last_host_error=1;
  if(!p||!p->seeded||!r||!gravity||!isfinite(dt)||dt<=0||!isfinite(cell)||cell<=0||p->tick==UINT32_MAX||p->generation==UINT32_MAX||(p->fixed_dt&&p->fixed_dt!=bits(dt)))return 0;
  for(int i=0;i<3;i++)if(!isfinite(gravity[i]))return 0;
+ p->last_host_error=2;
  collect(p);unsigned out=3;for(unsigned i=0;i<3;i++)if(i!=p->accepted&&!leased(p,i)){out=i;break;}if(out==3)return 0;
+ p->last_host_error=3;
  memset(r,0,sizeof(*r));uint32_t k[16]={p->n,p->buckets,p->capacity,p->iterations,bits(dt),bits(gravity[0]),bits(gravity[1]),bits(gravity[2]),bits(cell),inject,p->planes,p->tick,0,32,0,0};
  uint64_t h[8]={p->slots[out],p->trial,p->grid,p->contacts,p->control,p->free_state,p->plane,p->pending?p->edit:p->slots[p->accepted]};
  if(!s_begin(p->d)||!s_transition(p->d,p->slots[out],0)||!s_stamp(p->d,0))return 0;
@@ -90,7 +94,7 @@ int ph3_tick(Physics3 *p,float dt,const float *gravity,float cell,uint32_t injec
  ok=ok&&s_stamp(p->d,4)&&dispatch3(p,6,p->n,h,k)&&s_stamp(p->d,5)&&dispatch3(p,7,p->capacity>p->n?p->capacity:p->n,h,k)&&s_stamp(p->d,6)&&dispatch3(p,8,p->n,h,k)&&s_transition(p->d,p->slots[out],5)&&s_stamp(p->d,7)&&s_transition(p->d,p->control,1)&&s_copy(p->d,p->readback,p->control,256)&&s_transition(p->d,p->control,0)&&s_submit(p->d,8)&&s_wait(p->d);
  if(!ok){s_abort(p->d);return 0;}const uint32_t *header=s_map(p->d,p->readback,256);if(!header)return 0;r->error=header[0];r->contacts=header[1];r->published=header[2];r->max_degree=header[5];r->candidates=header[6];r->awake=header[7];s_unmap(p->d,p->readback,0);
  double q[8];if(!s_times_count(p->d,q,8)||s_errors(p->d))return 0;for(unsigned i=0;i<7;i++)r->phases_us[i]=q[i+1]-q[i];r->phases_us[7]=q[7]-q[0];Memory m;if(!s_memory(p->d,&m))return 0;r->committed=m.committed;
- if(!r->error){if(r->published!=p->n)return 0;p->accepted=out;p->pending=0;p->fixed_dt=bits(dt);p->generation++;p->slot_serial[out]=++p->serial;p->tick++;}else if(r->published)return 0;r->generation=p->generation;r->tick=p->tick;return 1;
+ if(!r->error){if(r->published!=p->n)return 0;p->accepted=out;p->pending=0;p->fixed_dt=bits(dt);p->generation++;p->slot_serial[out]=++p->serial;p->tick++;}else if(r->published)return 0;r->generation=p->generation;r->tick=p->tick;p->last_host_error=0;return 1;
 }
 static int read_buffer(Physics3 *p,uint64_t handle,uint64_t bytes,void *out,int restore){if(!s_begin(p->d)||!s_transition(p->d,handle,1)||!s_copy(p->d,p->readback,handle,bytes)||!s_transition(p->d,handle,restore)||!s_submit(p->d,0)||!s_wait(p->d))return 0;const void *data=s_map(p->d,p->readback,bytes);if(!data)return 0;memcpy(out,data,bytes);return s_unmap(p->d,p->readback,0);}
 int ph3_read(Physics3 *p,float *out){if(!p||!p->seeded||!out)return 0;collect(p);if(leased(p,p->accepted))return 0;return read_buffer(p,p->slots[p->accepted],192ull*p->n,out,5);}
