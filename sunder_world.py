@@ -616,24 +616,43 @@ class World:
                               contact_capacity=max(self.config.contact_capacity, capacity))
             expanded = _empty(capacity)
             expanded[:, :self.config.capacity] = source
+            # Allocate all host maps first, so allocation failure leaves the
+            # old world and handles intact. The new native context is provisional.
+            extra = capacity - len(self._accepted_active)
+            next_active = np.pad(self._accepted_active, (0, extra))
+            next_gen = np.pad(self._accepted_gen, (0, extra), constant_values=1)
+            next_issue_gen = np.pad(self._next_gen, (0, extra), constant_values=1)
+            next_free = list(range(capacity - 1, self.config.capacity - 1, -1)) + self._free
             fresh = self._backend_factory(new_cfg)
             try:
                 fresh.seed(expanded)
                 fresh.resume_clock(self.tick_id)
             except BaseException:
-                fresh.close()
+                try:
+                    fresh.close()
+                except BaseException as cleanup:
+                    self._faulted = f"capacity-migration cleanup failed: {cleanup}"
                 raise
+            # Retire the old, fence-drained context BEFORE committing new maps.
+            # If retirement fails, never reuse an uncertain native context.
+            try:
+                old.close()
+            except BaseException as error:
+                self._faulted = f"capacity-migration old-context retirement failed: {error}"
+                try:
+                    fresh.close()
+                except BaseException as cleanup:
+                    self._faulted += f"; new-context cleanup failed: {cleanup}"
+                raise WorldError("DEVICE_ERROR", self._faulted) from error
             self._backend = fresh
             self.config = new_cfg
-            extra = capacity - len(self._accepted_active)
-            self._accepted_active = np.pad(self._accepted_active, (0, extra))
-            self._accepted_gen = np.pad(self._accepted_gen, (0, extra), constant_values=1)
-            self._next_gen = np.pad(self._next_gen, (0, extra), constant_values=1)
-            self._free = list(range(capacity - 1, capacity - extra - 1, -1)) + self._free
+            self._accepted_active = next_active
+            self._accepted_gen = next_gen
+            self._next_gen = next_issue_gen
+            self._free = next_free
             self.epoch += 1
             self._cache = self._cache_key = None
             self._record("grow", capacity=capacity)
-            old.close()
 
     def record(self) -> dict:
         with self._lock:
