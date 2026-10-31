@@ -104,7 +104,7 @@ large-island optimisation. The planar pipeline and its original constraints are
 unchanged. The test double in `test_sunder_world.py` checks host transaction
 logic only; it is **not** a physics oracle.
 
-No fresh Windows GPU runs were possible from this authoring environment.
+A full qualification command was attempted in Windows GitHub Actions at source 510192f (run 41230865897). Host tests and compile PASS, but D3D12 context creation fails on Microsoft Hyper-V Video in the first empty-world scene; remaining native tests were NOT RUN. See [the preserved attempted-run provenance](P10_NATIVE_ATTEMPT_20261031.json) and its original Actions ZIP.
 The branch must remain **NO-GO / unmerged** until applicable native tests run
 and pass with retained evidence. G5 remains deferred, GPU-02 unverified, formal
 G6 and production release not qualified.
