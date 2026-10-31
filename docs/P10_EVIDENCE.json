@@ -1,0 +1,298 @@
+{
+  "date": "2026-10-31",
+  "verdict": "GO: bounded native 3D GPU rigid-body foundation",
+  "production_release": "NO-GO / NOT QUALIFIED",
+  "base": "acf8d3b4ace038f13f06f19af44e3c132b2dcc0f",
+  "P9": "PR 6 merged as evidence only; bitwise guarantee unqualified and nonblocking for P10",
+  "native_groups": [
+    {
+      "name": "axes",
+      "status": "PASS",
+      "seconds": 2.216707299929112
+    },
+    {
+      "name": "impacts",
+      "status": "PASS",
+      "seconds": 1.9913827000418678
+    },
+    {
+      "name": "planes_and_rest",
+      "status": "PASS",
+      "seconds": 1.4016388000454754
+    },
+    {
+      "name": "grazing_and_multisphere",
+      "status": "PASS",
+      "seconds": 0.8592425999231637
+    },
+    {
+      "name": "rejection_and_snapshots",
+      "status": "PASS",
+      "seconds": 0.6695329999784008
+    },
+    {
+      "name": "native_replay",
+      "status": "PASS",
+      "seconds": 0.33955430006608367
+    },
+    {
+      "name": "debug_validation",
+      "status": "PASS",
+      "seconds": 2.017384500009939
+    }
+  ],
+  "native_replay_observation": {
+    "bitwise_equal_observed": true,
+    "max_numeric_difference": 0.0,
+    "requirement": "independent numerical validity; no bitwise promise"
+  },
+  "native_source_hashes": {
+    "physics3.c": "5e513555b111817799781e6996fe12b9d8a70ac1a89c3314e860e1e9199f32b8",
+    "physics3.h": "1b369e69c9c92bb5095dcc1ec3046ade92ca9c19ea145f8047a1675d987d747b",
+    "physics3.hlsl": "b45431ea5baed9d5e53d21ca50df9a4a455a38750f19ff03bbbdb0f27631ba22",
+    "physics3-schema.json": "2f86c499d5d9bc3de9695b005fc00be0a82abfcb1616b2d01bab3df224aa2d86",
+    "build_physics3.py": "e2b477cee0127f7d5a2091ed301e249d1fbf597e7d01083a657f5caa20a59ce0",
+    "test_physics3.py": "a8b256b34df11a61c4a8ece7e239448e888c0829555a671ac844a6fb3fe44760",
+    "run_p10.py": "e986ae064c61b8d21e6fa20e15503c7f3c6c57e24b305d190cc7ccdb6a308669"
+  },
+  "stress": [
+    {
+      "n": 10000,
+      "contacts": 5000,
+      "contacts_per_body": 0.5,
+      "candidate_pairs_tested": 9950,
+      "max_degree": 1,
+      "topology": "N/2 independent 3D moving/frictional two-sphere pairs, separated xyz lattice",
+      "adapter": "NVIDIA GeForce RTX 4070 Ti SUPER",
+      "gpu_phase_names": [
+        "prepare",
+        "hash",
+        "narrowphase",
+        "solve_gather",
+        "integrate",
+        "validate",
+        "publish",
+        "total"
+      ],
+      "gpu_phases_us": [
+        [
+          47.0,
+          5.25,
+          37.75,
+          2104.5,
+          39.75,
+          53.5,
+          8.0,
+          2295.75
+        ],
+        [
+          46.75,
+          4.0,
+          37.75,
+          1659.0,
+          39.0,
+          54.25,
+          7.25,
+          1848.0
+        ],
+        [
+          48.5,
+          5.0,
+          38.0,
+          2035.75,
+          40.0,
+          53.25,
+          6.0,
+          2226.5
+        ]
+      ],
+      "gpu_total_median_us": 2226.5,
+      "sample_count": 3,
+      "committed_bytes": 14221312,
+      "energy_before": 5650.000041723252,
+      "energy_after": 3664.285828811783,
+      "independent_validation": "all-body analytical tangential/normal impulse and spin, pair momentum/energy/separation, identities/quaternions and all-object isolation certificate; mandatory GPU KKT checks retained",
+      "qualification": false,
+      "wall_seconds_including_init_readback_cpu_oracle": 0.24658710008952767
+    },
+    {
+      "n": 100000,
+      "contacts": 50000,
+      "contacts_per_body": 0.5,
+      "candidate_pairs_tested": 99500,
+      "max_degree": 1,
+      "topology": "N/2 independent 3D moving/frictional two-sphere pairs, separated xyz lattice",
+      "adapter": "NVIDIA GeForce RTX 4070 Ti SUPER",
+      "gpu_phase_names": [
+        "prepare",
+        "hash",
+        "narrowphase",
+        "solve_gather",
+        "integrate",
+        "validate",
+        "publish",
+        "total"
+      ],
+      "gpu_phases_us": [
+        [
+          266.5,
+          16.25,
+          220.25,
+          6618.25,
+          227.25,
+          172.0,
+          25.5,
+          7546.0
+        ],
+        [
+          264.0,
+          16.5,
+          221.0,
+          6872.0,
+          435.5,
+          171.75,
+          24.75,
+          8005.5
+        ],
+        [
+          265.5,
+          16.5,
+          223.0,
+          7252.0,
+          228.5,
+          171.0,
+          25.5,
+          8182.0
+        ]
+      ],
+      "gpu_total_median_us": 8005.5,
+      "sample_count": 3,
+      "committed_bytes": 136577024,
+      "energy_before": 56500.00041723251,
+      "energy_after": 36642.85828811783,
+      "independent_validation": "all-body analytical tangential/normal impulse and spin, pair momentum/energy/separation, identities/quaternions and all-object isolation certificate; mandatory GPU KKT checks retained",
+      "qualification": false,
+      "wall_seconds_including_init_readback_cpu_oracle": 0.2584773999406025
+    },
+    {
+      "n": 1000000,
+      "contacts": 500000,
+      "contacts_per_body": 0.5,
+      "candidate_pairs_tested": 995000,
+      "max_degree": 1,
+      "topology": "N/2 independent 3D moving/frictional two-sphere pairs, separated xyz lattice",
+      "adapter": "NVIDIA GeForce RTX 4070 Ti SUPER",
+      "gpu_phase_names": [
+        "prepare",
+        "hash",
+        "narrowphase",
+        "solve_gather",
+        "integrate",
+        "validate",
+        "publish",
+        "total"
+      ],
+      "gpu_phases_us": [
+        [
+          2238.25,
+          143.25,
+          1677.5,
+          61845.5,
+          2264.0,
+          1582.0,
+          598.25,
+          70348.75
+        ],
+        [
+          2402.5,
+          138.25,
+          1592.5,
+          58306.5,
+          2155.5,
+          1980.5,
+          582.5,
+          67158.25
+        ],
+        [
+          2921.75,
+          137.0,
+          1598.5,
+          58138.75,
+          2154.5,
+          1507.5,
+          605.0,
+          67063.0
+        ]
+      ],
+      "gpu_total_median_us": 67158.25,
+      "sample_count": 3,
+      "committed_bytes": 1360855040,
+      "energy_before": 565000.0041723251,
+      "energy_after": 366428.5828811783,
+      "independent_validation": "all-body analytical tangential/normal impulse and spin, pair momentum/energy/separation, identities/quaternions and all-object isolation certificate; mandatory GPU KKT checks retained",
+      "qualification": false,
+      "wall_seconds_including_init_readback_cpu_oracle": 1.1224527000449598
+    }
+  ],
+  "legacy": {
+    "command": "python dev_test.py full",
+    "status": "PASS",
+    "wall_seconds": 306.18530930008274,
+    "groups": [
+      {
+        "name": "all",
+        "wall_seconds": 215.35003950004466,
+        "accepted_ticks": 10598,
+        "expected_rejections": 2,
+        "status": "PASS"
+      },
+      {
+        "name": "overhead",
+        "wall_seconds": 0.4321973999030888,
+        "accepted_ticks": 40,
+        "expected_rejections": 0,
+        "status": "PASS"
+      },
+      {
+        "name": "cpu",
+        "wall_seconds": 0.0664122001035139,
+        "status": "PASS"
+      },
+      {
+        "name": "commands",
+        "wall_seconds": 15.427343299961649,
+        "status": "PASS"
+      },
+      {
+        "name": "cli",
+        "wall_seconds": 0.5408680000109598,
+        "status": "PASS"
+      },
+      {
+        "name": "device",
+        "wall_seconds": 0.39279060007538646,
+        "status": "PASS"
+      },
+      {
+        "name": "storage",
+        "wall_seconds": 0.5276249999878928,
+        "status": "PASS"
+      },
+      {
+        "name": "spatial",
+        "wall_seconds": 0.8459735999349505,
+        "status": "PASS"
+      }
+    ]
+  },
+  "python_regression_tests": 19,
+  "limitations": [
+    "No production release qualification",
+    "3 stress samples per population, independent pairs, degree 1",
+    "No million-body connected-graph or real-time claim",
+    "First-order orientation/inertia integration",
+    "No exact time-of-impact integration; validated speculative stencil envelope",
+    "Bitwise native/cross-device replay not guaranteed",
+    "General public API, convexes, meshes, joints and terrain out of scope"
+  ]
+}

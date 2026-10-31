@@ -1,5 +1,23 @@
 # GPU Physics Billiards
 
+## Native 3D foundation (P10)
+
+The headless 3D sphere/sphere and sphere/plane foundation lives in `physics3.*`.
+The existing planar billiards implementation remains a compatibility path.
+With the existing Zig 0.15.2 / Windows SDK toolchain and Python NumPy installed:
+
+```powershell
+python run_p10.py
+python dev_test.py full
+```
+
+P10 builds an isolated D3D12 test DLL and nine compute shaders, runs independent
+CPU-oracle physics checks and three fresh samples each at 10K/100K/1M spheres.
+Results, exact build hashes and a five-frame 3D accepted-state demonstration are
+written to `evidence/p10/`. Run GPU suites serially. This is a bounded native 3D
+foundation GO, not production, arbitrary-topology or bitwise-replay qualification.
+See [the living architecture record](docs/ENGINE_ARCHITECTURE.md#p10-native-3d-foundation--go-2026-10-31).
+
 **Technical architecture and living gate record:** [docs/ENGINE_ARCHITECTURE.md](docs/ENGINE_ARCHITECTURE.md). Update it at each G0–G6 breakpoint or material architecture decision. Historical and local experimental results are labeled separately from released code.
 
 
