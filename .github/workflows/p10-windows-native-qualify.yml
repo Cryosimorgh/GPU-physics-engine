@@ -1,17 +1,6 @@
 name: P10 Windows native qualification attempt
 on:
-  push:
-    branches:
-      - p10-headless-world-api-20261031
-    paths:
-      - '.github/workflows/p10-windows-native-qualify.yml'
-      - 'sunder_world.py'
-      - 'test_sunder_world.py'
-      - 'physics3.c'
-      - 'physics3.h'
-      - 'headless_demo.py'
-      - 'run_world_sweep.py'
-      - 'test_physics3.py'
+  workflow_dispatch:
 jobs:
   native-qualify:
     runs-on: windows-latest
