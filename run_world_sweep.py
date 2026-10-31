@@ -1,109 +1,170 @@
-"""Consolidated P10 headless regression runner; commands and verdict are auditable.
+"""P10 Windows/D3D12 native qualification. Each run preserves independent evidence.
 
-Windows x64 with D3D12, Python, NumPy, Zig/SDK required for native cases.
 python run_world_sweep.py --full
-python run_world_sweep.py              # CPU unit tests + three native demos
+Native physics is never replaced by mocked results; missing tests imply NO-GO.
 """
+from datetime import datetime, timezone
 from pathlib import Path
-import argparse
+import hashlib
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import time
+import uuid
 
 ROOT = Path(__file__).resolve().parent
-EVIDENCE = ROOT / "evidence" / "p10" / "world-sweep"
+BASE = ROOT / "evidence" / "p10" / "world-sweep"
+RUN_ID = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
+RUN = BASE / "runs" / RUN_ID
+SOURCES = ("physics3.c", "physics3.h", "physics3.hlsl", "physics3-schema.json",
+           "sunder_world.py", "headless_demo.py", "test_physics3.py",
+           "test_sunder_world.py", "run_world_sweep.py", "build_physics3.py")
+CASES = ("cpu-world", "build", "world-empty", "world-16", "world-1024",
+         "native-physics", "legacy-pool-rail", "native-stress")
 
 
-def execute(name, argv, timeout, results):
+def digest():
+    return {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in SOURCES}
+
+
+def git_revision():
+    p = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
+                       capture_output=True, check=False)
+    return p.stdout.strip() if p.returncode == 0 else None
+
+
+def driver_inventory():
+    if platform.system() != "Windows":
+        return {"status": "NOT RUN: no Windows GPU host"}
+    cmd = ["powershell", "-NoProfile", "-Command",
+           "Get-CimInstance Win32_VideoController | "
+           "Select-Object Name,DriverVersion,PNPDeviceID | ConvertTo-Json -Compress"]
+    try:
+        p = subprocess.run(cmd, text=True, capture_output=True, timeout=20)
+        return json.loads(p.stdout) if p.returncode == 0 and p.stdout.strip() else {
+            "status": "UNAVAILABLE", "error": p.stderr[-250:]}
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        return {"status": "UNAVAILABLE", "error": str(exc)}
+
+
+def execute(name, args, result, timeout=600, output=None):
     start = time.perf_counter()
-    log = EVIDENCE / (name + ".log")
-    with log.open("w", encoding="utf-8") as out:
+    log = RUN / (name + ".log")
+    env = os.environ.copy()
+    env["SUNDER_P10_EVIDENCE_DIR"] = str(RUN)
+    command = [sys.executable, *args]
+    with log.open("w", encoding="utf-8") as f:
         try:
-            proc = subprocess.run([sys.executable, *argv], cwd=ROOT,
-                                  stdout=out, stderr=subprocess.STDOUT,
-                                  timeout=timeout, check=False)
-            status = "PASS" if proc.returncode == 0 else "FAIL"
-            error = None if proc.returncode == 0 else "nonzero exit"
-            code = proc.returncode
+            process = subprocess.run(command, cwd=ROOT, env=env,
+                                     stdout=f, stderr=subprocess.STDOUT,
+                                     timeout=timeout, check=False)
+            ok = process.returncode == 0
+            failure = None if ok else "nonzero exit; inspect retained log"
+            code = process.returncode
         except (OSError, subprocess.TimeoutExpired) as exc:
-            status, error, code = "FAIL", str(exc), None
-    row = {"name": name, "command": [sys.executable, *argv], "status": status,
-           "exit_code": code, "seconds": time.perf_counter() - start,
-           "log": str(log.relative_to(ROOT)), "failure": error}
-    if status == "PASS" and name.startswith("world-"):
-        demo = ROOT / "evidence" / "p10" / (name + ".json")
+            ok, code, failure = False, None, str(exc)
+            f.write("\nRUNNER_EXCEPTION: " + str(exc) + "\n")
+    row = {"name": name, "command": command, "exit_code": code,
+           "status": "PASS" if ok else "FAIL", "failure": failure,
+           "elapsed_wall_s": time.perf_counter() - start,
+           "log": str(log.relative_to(ROOT))}
+    if output is not None and ok:
         try:
-            parsed = json.loads(demo.read_text())
-            row["measurements"] = parsed["summary"]
-            row["interaction_class"] = parsed["workload"]
-            row["device"] = parsed["adapter"]
-        except (OSError, KeyError, ValueError) as error:
-            row.update(status="FAIL", failure=f"missing/invalid JSON: {error}")
-    results.append(row)
-    print(status, name, flush=True)
-    return status == "PASS"
+            measured = json.loads(output.read_text())
+            if measured.get("status") != "PASS":
+                raise ValueError("native demo JSON does not report PASS")
+            row["metrics"] = measured.get("summary", {})
+            row["adapter"] = measured.get("adapter")
+            row["interaction_class"] = measured.get("workload")
+            row["replay"] = measured.get("replay")
+            row["output"] = str(output.relative_to(ROOT))
+            if not isinstance(row["replay"], dict) or not row["replay"].get(
+                    "comparison", {}).get("equal"):
+                raise ValueError("two accepted independent numerical replays missing")
+            adapter = str(row["adapter"] or "").lower()
+            if not adapter or any(x in adapter for x in (
+                    "warp", "microsoft basic", "software", "llvmpipe", "swiftshader")):
+                raise ValueError("hardware compute adapter unverified: " + adapter)
+        except (OSError, ValueError, KeyError) as exc:
+            row.update(status="FAIL", failure="invalid native evidence: " + str(exc))
+            ok = False
+    result["tests"].append(row)
+    print(row["status"], name, flush=True)
+    return ok
 
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--full", action="store_true",
-                   help="also run native P10 physics, legacy pool/rail and 10K/100K/1M")
-    p.add_argument("--skip-stress", action="store_true",
-                   help="explicitly mark large native stress cases unverified")
-    args = p.parse_args()
-    EVIDENCE.mkdir(parents=True, exist_ok=True)
-    rows = []
-    result = {"status": "NO-GO", "scope": "application-facing headless world API",
-              "host": {"platform": platform.platform(), "python": sys.version},
-              "tests": rows, "native_physics": "NOT RUN", "legacy": "NOT RUN",
-              "stress": "NOT RUN", "production_release": "NOT QUALIFIED",
-              "P9": "PR #6 merged as incomplete evidence, bitwise replay UNSUPPORTED",
-              "claims": "No unsupported tail latency, deadline or topology claims"}
+    if sys.argv[1:] != ["--full"]:
+        print("Use exactly: python run_world_sweep.py --full", file=sys.stderr)
+        return 2
+    RUN.mkdir(parents=True, exist_ok=False)
+    first = digest()
+    result = {
+        "schema": "sunder-p10-native-qualification-v2",
+        "run_id": RUN_ID, "status": "NO-GO", "pr": 8,
+        "revision": git_revision(), "host_platform": platform.platform(),
+        "python": sys.version, "driver_inventory": driver_inventory(),
+        "build_and_source_sha256": first,
+        "scope": "native GPU authored spheres, independent numerical replay, old physics and separated-pair stress",
+        "expected_cases": list(CASES), "tests": [],
+        "unexecuted": list(CASES), "cpu_oracle_overhead": "separate native test results, not production timings",
+        "stress_topology": "separated collision-bearing pairs, degree 1; not arbitrary connected authored world",
+        "P9_bitwise": "INCOMPLETE / UNSUPPORTED",
+        "production_release": "NOT QUALIFIED"
+    }
     try:
-        execute("cpu-world", ["-m", "unittest", "test_sunder_world", "-q"], 90, rows)
-        # One build for all native users; no generated shaders edited by hand.
-        native = platform.system() == "Windows"
-        if not native:
-            result["native_physics"] = "NOT RUN: Windows/D3D12 host required"
-        else:
-            built = execute("build", ["build_physics3.py"], 300, rows)
-            if built:
-                for name, n, bodies, steps in [
-                    ("world-empty", 1, 0, 4),
-                    ("world-16", 16, 16, 8),
-                    ("world-1024", 1024, 1024, 8)]:
-                    execute(name, ["headless_demo.py", "--capacity", str(n),
-                                   "--bodies", str(bodies), "--steps", str(steps),
-                                   "--replay", "--out",
-                                   str(Path("evidence/p10") / (name + ".json"))], 180, rows)
-                if args.full:
-                    execute("native-physics", ["test_physics3.py", "--smoke"], 240, rows)
-                    result["native_physics"] = rows[-1]["status"]
-                    execute("legacy-pool-rail", ["dev_test.py", "full"], 900, rows)
-                    result["legacy"] = rows[-1]["status"]
-                    if not args.skip_stress:
-                        execute("native-stress", ["test_physics3.py", "--stress",
-                                                  "10000", "100000", "1000000"], 600, rows)
-                        result["stress"] = rows[-1]["status"]
-                    else:
-                        result["stress"] = "NOT RUN: user requested --skip-stress"
-                else:
-                    result["native_physics"] = "NOT RUN: require --full for full physics oracle"
-        result["status"] = ("PASS: bounded executed cases; NOT production-qualified"
-                            if rows and all(r["status"] == "PASS" for r in rows)
-                            and native and (not args.full or
-                            result["native_physics"] == result["legacy"] == "PASS" and
-                            result["stress"] == "PASS")
-                            else "NO-GO: incomplete or failed applicable qualification")
+        if platform.system() != "Windows":
+            result["failure"] = "Windows x64 with functional D3D12 hardware adapter required"
+            return 1
+        tests = [
+            ("cpu-world", ["-m", "unittest", "test_sunder_world", "-q"], 90, None),
+            ("build", ["build_physics3.py"], 300, None),
+            ("world-empty", ["headless_demo.py", "--capacity", "1", "--bodies",
+                             "0", "--steps", "4", "--replay", "--out",
+                             str(RUN / "world-empty.json")], 180, RUN / "world-empty.json"),
+            ("world-16", ["headless_demo.py", "--capacity", "16", "--bodies",
+                          "16", "--steps", "8", "--replay", "--out",
+                          str(RUN / "world-16.json")], 180, RUN / "world-16.json"),
+            ("world-1024", ["headless_demo.py", "--capacity", "1024", "--bodies",
+                            "1024", "--steps", "8", "--replay", "--out",
+                            str(RUN / "world-1024.json")], 300, RUN / "world-1024.json"),
+            ("native-physics", ["test_physics3.py", "--smoke"], 300, None),
+            ("legacy-pool-rail", ["dev_test.py", "full"], 1200, None),
+            ("native-stress", ["test_physics3.py", "--stress",
+                               "10000", "100000", "1000000"], 900, None)
+        ]
+        for name, command, timeout, output in tests:
+            ok = execute(name, command, result, timeout, output)
+            result["unexecuted"].remove(name)
+            if not ok:
+                result["failure"] = "first failing gate: " + name
+                break
+        if result["unexecuted"]:
+            return 1
+        if first != digest():
+            result["failure"] = "source inputs changed during qualification"
+            return 1
+        result["status"] = "GO: all scripted native tests PASS; review limitations before merge"
+        return 0
     finally:
-        result["applicable_gates_completed"] = result["status"].startswith("PASS")
-        (EVIDENCE / "consolidated.json").write_text(json.dumps(result, indent=2))
-        print(json.dumps({"verdict": result["status"],
-                          "evidence": str(EVIDENCE / "consolidated.json")}, indent=2))
-    return 0 if result["applicable_gates_completed"] else 1
+        result["completed_at_utc"] = datetime.now(timezone.utc).isoformat()
+        result["qualified"] = result["status"].startswith("GO:") and not result["unexecuted"]
+        dest = RUN / "consolidated.json"
+        dest.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        # Preserve the first canonical report. Subsequent runs have unique paths.
+        canonical = BASE / "consolidated.json"
+        if not canonical.exists():
+            shutil.copy2(dest, canonical)
+        with (BASE / "run-index.jsonl").open("a", encoding="utf-8") as index:
+            index.write(json.dumps({"run": RUN_ID, "status": result["status"],
+                                    "path": str(dest.relative_to(ROOT)),
+                                    "revision": result["revision"]}) + "\n")
+        print(json.dumps({"status": result["status"], "evidence": str(dest),
+                          "failure": result.get("failure"),
+                          "not_run": result["unexecuted"]}, indent=2), flush=True)
 
 
 if __name__ == "__main__":
