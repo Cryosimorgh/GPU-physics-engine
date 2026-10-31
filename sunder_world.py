@@ -190,8 +190,8 @@ def _ghost(a: np.ndarray, slot: int, generation: int):
     a[2, slot] = 8192 + 3 * (slot // (1024 * 1024))
     a[9, slot] = 1
     a[20, slot] = .01
-    a[36, slot].view(np.uint32)[()] = slot
-    a[37, slot].view(np.uint32)[()] = generation
+    a[36].view(np.uint32)[slot] = slot
+    a[37].view(np.uint32)[slot] = generation
 
 
 def _empty(n: int) -> np.ndarray:
@@ -239,8 +239,8 @@ def _set_body(a: np.ndarray, slot: int, generation: int, body: Body, cfg: WorldC
         a[19, slot] = 1 / mass
         a[24:27, slot] = moment
         a[30:33, slot] = 1 / moment
-    a[36, slot].view(np.uint32)[()] = slot
-    a[37, slot].view(np.uint32)[()] = generation
+    a[36].view(np.uint32)[slot] = slot
+    a[37].view(np.uint32)[slot] = generation
 
 
 class Snapshot:
@@ -287,6 +287,7 @@ class Snapshot:
 class World:
     def __init__(self, config: WorldConfig = WorldConfig(), backend_factory=Backend):
         self.config = config
+        self._initial_config = config
         self._lock = threading.RLock()
         self._backend_factory = backend_factory
         self._backend = backend_factory(config)
@@ -569,6 +570,7 @@ class World:
             self._free = list(range(capacity - 1, capacity - extra - 1, -1)) + self._free
             self.epoch += 1
             self._cache = self._cache_key = None
+            self._record("grow", capacity=capacity)
             old.close()
 
     def record(self) -> dict:
@@ -581,7 +583,7 @@ class World:
             hashes = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
                       for p in paths if p.exists()}
             return {"format": "sunder-native-numerical-v1",
-                    "configuration": asdict(self.config),
+                    "configuration": asdict(self._initial_config),
                     "provenance": {"adapter": self._backend.adapter, "sha256": hashes},
                     "steps": list(self._history),
                     "bitwise_determinism": "UNSUPPORTED"}
@@ -612,7 +614,9 @@ def replay_record(record: dict, backend_factory=Backend) -> list[tuple[TickResul
         for event in record["steps"]:
             for command in event["commands"]:
                 op = command["op"]
-                if op == "create":
+                if op == "grow":
+                    w.grow(command["capacity"])
+                elif op == "create":
                     actual = w.create_body(Body(**command["body"]))
                     if asdict(actual) != command["handle"]:
                         raise WorldError("REPLAY_DIVERGENCE", "generated handle mismatch")
