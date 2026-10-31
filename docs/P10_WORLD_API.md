@@ -13,7 +13,7 @@ Public module `sunder_world.py` exports `WorldConfig`, `Body`, `Handle`, `World`
 `compare_replays`. World methods include create/remove/update bodies,
 force/clear-force/impulse, fixed-step/async-step/poll, acquire/release snapshot,
 grow capacity, record commands, and close. Worlds are independent native
-contexts; handles are generation-safe and are not interchangeable.
+contexts; handles are generation-safe, carry an opaque world identity and are not interchangeable.
 
 Supported units: metre, kilogram, second, Newton, Newton-second. Bounds are
 **authoring bounds**, not collision walls. The configured native model handles
@@ -31,7 +31,7 @@ via a new context whose native tick clock is restored. That operation temporaril
 requires two allocations and may fail admission without altering the old world.
 
 Unused GPU capacity is represented as physically inert static proxies outside
-the authoring domain. Public slots remain stable through removal and growth;
+the authoring domain. Public slots remain stable through removal and growth; cross-world aliasing is rejected;
 there is **no GPU dense compaction or sparse-slot optimisation**. GPU compute
 and memory scale with capacity, not just authored active bodies. No claim of a
 million-body arbitrary connected graph or general-purpose GPU-sparse scaling
