@@ -1,4 +1,29 @@
-# GPU Physics Billiards
+# Sunder — GPU Physics
+
+## P10 headless world API (feature branch; native qualification pending)
+
+The application-facing Python API is in [`sunder_world.py`](sunder_world.py),
+built on top of the existing native 3D sphere D3D12 solver. It supports
+independent worlds, MKS units, generation-safe bodies, mass/radius/material,
+static policies, gravity, forces, impulses, fixed steps, async completion,
+immutable accepted snapshots, capacity growth and numerical replay. It is
+not a renderer or a benchmark fixture. See [API and caveats](docs/P10_WORLD_API.md).
+
+~~~powershell
+python build_physics3.py
+python headless_demo.py --capacity 16 --steps 8 --replay
+python headless_demo.py --capacity 1024 --steps 8 --replay
+python run_world_sweep.py --full
+~~~
+
+The CLI creates its own scenes, fills body capacity, inspects GPU-accepted
+snapshots, removes/reuses a body, captures ordered commands and writes JSON
+timing/failure evidence. Headless GPU execution requires Windows x64/D3D12,
+the existing Zig/SDK build tools and NumPy. The complete native regression
+has **not been run for this branch** in the GitHub authoring environment.
+Existing P10 native 3D foundation evidence is a different qualification
+boundary. The world API branch remains **NO-GO / unmerged** until those
+native gates pass; P9 bitwise replay remains unqualified.
 
 ## Native 3D foundation (P10)
 
