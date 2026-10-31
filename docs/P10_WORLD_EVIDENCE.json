@@ -3,7 +3,7 @@
   "repository": "Cryosimorgh/Sunder",
   "branch": "p10-headless-world-api-20261031",
   "baseline_main": "0eb15233e37a698bc6b28c8916afbcb8d6cbcb8a",
-  "decision": "NO-GO: actual Windows full-sweep attempt failed environmental D3D12 admission at world-empty; all further native gates unexecuted",
+  "decision": "NO-GO: native hardware qualification suite prepared but actual supported-hardware execution unverified; hosted Hyper-V attempt failed admission",
   "historical_native_3d": "Earlier merged P10 native bounded 3D evidence; NOT evidence for the new wrapper",
   "P8b": "CORRECTED and MERGED in PR #5; historical 4072 tick failure preserved",
   "P9": "PR #6 MERGED AS EVIDENCE; FAIL/INCOMPLETE for bitwise qualification",
@@ -148,5 +148,16 @@
         "NOT RUN"
       ]
     ]
+  },
+  "manual_windows_handoff_suite": {
+    "status": "PREPARED / REAL HARDWARE RESULTS NOT YET RECEIVED",
+    "one_click": "RUN_P10_WINDOWS.cmd",
+    "documentation": "docs/P10_RUN_ON_WINDOWS.md",
+    "full_command": "python run_world_sweep.py --full",
+    "new_mandatory_case": "test_native_world.py (8 native D3D12 application-world scenarios; no FakeGPU)",
+    "legacy_cases": "empty/16/1024 authored, native double-precision CPU oracle, full pool/rail/device, 10K/100K/1M separated collision-pair stress",
+    "host_test": "test_p10_packaging.py verifies immutable ZIP manifests and distinct retries",
+    "output": "P10-RESULTS-TO-SEND/Sunder-P10-<run-id>-<GO|NO-GO>-<UTC>-<nonce>.zip",
+    "disposition": "NO-GO until user provides complete hardware D3D12 evidence on the tested PR head; previous hosted Hyper-V hardware failure remains valid"
   }
 }
