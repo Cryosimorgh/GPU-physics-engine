@@ -54,8 +54,7 @@ D3D12 call, with `poll` for completion; it does not add another GPU scheduler.
 Calls to mutate during an in-flight tick return backpressure. Ordinary ticks
 leave full physics state GPU resident. On-demand `acquire` performs a full
 readback, produces an immutable CPU copy, and acquires an existing native
-snapshot lease. A held current-generation lease may block another edit
-readback. Release leases explicitly; destruction refuses outstanding leases.
+snapshot lease. A held current-generation lease may block an edit readback unless the accepted-state immutable CPU cache already exists. Release leases explicitly; destruction refuses outstanding leases.
 Native GPU consumers continue to use `ph3_track` with a completion fence.
 
 Errors are distinguishable: invalid configuration/command, stale handle,
@@ -91,8 +90,8 @@ mock-only CPU lifecycle tests, native 3D numerical CPU-oracle/negative cases,
 legacy pool/rail suite, and existing 10K/100K/1M stress runs. Stress consists
 of separated moving colliding pairs and is **not** a dense authored scene.
 
-Evidence output is `evidence/p10/world-sweep/consolidated.json` with logs.
-It separates accepted/rejected counts, GPU and host p50/p95/p99/worst, missed
+Each native qualification attempt writes immutable evidence under `evidence/p10/world-sweep/runs/<UTC>-<id>/` with `consolidated.json` and logs. The first top-level `evidence/p10/world-sweep/consolidated.json` is retained unchanged; `run-index.jsonl` locates every attempt.
+It separates accepted/rejected counts, GPU and host p50/p95/p99/worst, configured and fixed-step deadline
 deadlines, memory, and failure causes. CPU-oracle/readback work is reported
 separately, not included as production-path throughput. Three-sample historical
 P10 stress measurements are not sustained tail-latency qualification.
