@@ -105,6 +105,21 @@ class WorldTests(unittest.TestCase):
                     new_snap.body(old)
                 self.assertEqual(new_snap.body(new)["position"][0], 5.)
 
+    def test_edit_while_accepted_snapshot_is_leased(self):
+        with self.world(2) as w:
+            h = w.create_body(Body((1., 0., 0.)))
+            self.assertEqual(w.step().status, "ACCEPTED")
+            held = w.acquire()
+            self.assertEqual(held.body(h)["position"], (1., 0., 0.))
+            # Cached accepted readback permits candidate edits without
+            # reading a native slot that the snapshot consumer has leased.
+            w.apply_impulse(h, (1., 0., 0.))
+            self.assertEqual(w.step().status, "ACCEPTED")
+            self.assertEqual(held.body(h)["position"], (1., 0., 0.))
+            held.close()
+            with w.acquire() as current:
+                self.assertGreater(current.body(h)["position"][0], 1.)
+
     def test_rejected_structural_tick_keeps_accepted_state(self):
         with self.world() as w:
             h = w.create_body(Body((0., 0., 0.)))
