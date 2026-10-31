@@ -38,6 +38,8 @@ def summarize(rows):
             "cpu_production_thread_us": stats("cpu_us"),
             "host_wall_submission_completion_us": stats("wall_us"),
             "deadline_misses": sum(r.deadline_miss for r in rows),
+            "gpu_fixed_step_deadline_misses": sum(r.gpu_fixed_step_deadline_miss for r in rows),
+            "host_fixed_step_deadline_misses": sum(r.host_fixed_step_deadline_miss for r in rows),
             "peak_tracked_committed_bytes": max((r.committed_bytes for r in rows), default=0),
             "failures": [asdict(r) for r in rows if r.status != "ACCEPTED"],
             "cpu_oracle_overhead_us": "NOT MEASURED / independent native suite separate"}
