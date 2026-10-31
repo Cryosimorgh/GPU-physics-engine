@@ -3,20 +3,20 @@
   "repository": "Cryosimorgh/Sunder",
   "branch": "p10-headless-world-api-20261031",
   "baseline_main": "0eb15233e37a698bc6b28c8916afbcb8d6cbcb8a",
-  "decision": "NO-GO: required Windows/D3D12 native physics full sweep and physical/collision numerical replay remain unexecuted",
+  "decision": "NO-GO: actual Windows full-sweep attempt failed environmental D3D12 admission at world-empty; all further native gates unexecuted",
   "historical_native_3d": "Earlier merged P10 native bounded 3D evidence; NOT evidence for the new wrapper",
   "P8b": "CORRECTED and MERGED in PR #5; historical 4072 tick failure preserved",
   "P9": "PR #6 MERGED AS EVIDENCE; FAIL/INCOMPLETE for bitwise qualification",
   "fresh_tests": {
     "github_action_cpu_world": "PASS: 10 CPU-only host contract tests on Linux runner at commit 93ea51d940b484717c2dcbed57cc67648810a524; run 41229876886 (does not qualify native physics). Further final-HEAD checks to be monitored.",
-    "native_staged_publication": "NOT RUN",
-    "authored_empty_16_1024": "NOT RUN",
-    "native_replay_two_runs": "NOT RUN",
-    "legacy_pool_rail": "NOT RUN",
-    "stress_10000_100000_1000000": "NOT RUN",
-    "windows_native_compile": "PASS: Windows runner built 9 original HLSL shaders and isolated DLL, plus py_compile, at commit 5069f6c327eb1cc8f14c3872961531372cad6b67; run 41229757701. This is a build only, no GPU execution.",
-    "extended_host_adversarial": "PENDING final GitHub CI run after latest fixes; prior 17-test run failed an overstrict shutdown race assertion, corrected in 2bc9d7701dfb8ace5a866c93adcb4afdac801e94",
-    "native_hardware_full_sweep": "NOT RUN: no Windows x64 hardware adapter accessible to this authoring environment"
+    "native_staged_publication": "NOT RUN: Windows runner cannot create D3D12 context",
+    "authored_empty_16_1024": "world-empty FAIL (hardware unavailable), 16 and 1024 NOT RUN",
+    "native_replay_two_runs": "NOT RUN: no native D3D12 adapter",
+    "legacy_pool_rail": "NOT RUN in full-sweep attempt due fail-fast; prior historical evidence remains separate",
+    "stress_10000_100000_1000000": "NOT RUN in full-sweep attempt due fail-fast",
+    "windows_native_compile": "PASS: Zig 0.15.2 built isolated D3D12 DLL and 9 HLSL shaders during full-sweep run 41230865897",
+    "extended_host_adversarial": "PASS: 17/17 CPU-host/mock tests on Windows run 41230865897, source commit 510192f99152b93fdd6c406bf696dbf926adaa28",
+    "native_hardware_full_sweep": "NO-GO: attempted python run_world_sweep.py --full on GitHub-hosted Windows Server 2025; only Microsoft Hyper-V Video (driver 10.0.26100.1150). world-empty cannot create/admit D3D12 context. First failing gate. 16/1024, oracle, legacy and large stress NOT RUN."
   },
   "performance": {
     "gpu_us": {
@@ -34,7 +34,7 @@
     "deadline_misses": null,
     "committed_bytes": null,
     "samples": 0,
-    "note": "No sample collected for the changed application/world code; no speed or real-time claim."
+    "note": "No GPU tick ran on new world implementation. All new host/GPU percentile values, deadline misses and committed bytes remain unmeasured. Historical baseline is not transferred."
   },
   "workload_categories": {
     "authored": "empty/16/1024 authored moving/colliding spheres",
@@ -44,12 +44,11 @@
   "bounded_regression_command": "python run_world_sweep.py --full (exact, no --skip-stress)",
   "evidence_produced_by_runner": "evidence/p10/world-sweep/runs/<run-id>/consolidated.json; first top-level evidence/p10/world-sweep/consolidated.json retained",
   "blockers": [
-    "Transactional stage/rollback, snapshot leases and capacity growth not GPU validated",
-    "Two independent native numerical replay runs not collected",
-    "Legacy compatibility and 10K/100K/1M repeated on modified DLL not collected",
-    "No production-path p50/p95/p99 or failure evidence for new implementation",
-    "Actual Windows/D3D12 GPU physics, lease/device failure and replay qualification NOT RUN",
-    "Fresh hardware performance sampling for API NOT RUN"
+    "Hosted Windows machine exposes Microsoft Hyper-V Video only; native ph3_open returns ALLOCATION_OR_DEVICE",
+    "Run exact full native sweep on Windows x64 with a functioning hardware D3D12 adapter; preserve unique evidence directory",
+    "Validate actual GPU staged rejection, independent oracles, snapshot leases, topology/physics and replay twice",
+    "Run legacy pool/rail and 10K/100K/1M collision-bearing independent-pair cases on supported hardware",
+    "Collect real GPU and host timings, misses, committed bytes and failure diagnostics"
   ],
   "excluded_features": [
     "new 3D shape families",
@@ -97,5 +96,57 @@
     "evidence_isolation": "Each full sweep writes evidence/p10/world-sweep/runs/<UTC>-<id>/consolidated.json; first-ever top-level consolidated.json is preserved and never overwritten, with run-index.jsonl mapping attempts.",
     "mandatory_full_command": "python run_world_sweep.py --full",
     "merge_authorized": false
+  },
+  "real_windows_attempt": {
+    "status": "NO-GO",
+    "source_commit": "510192f99152b93fdd6c406bf696dbf926adaa28",
+    "run_id": "20261031T184500Z-0618f636",
+    "workflow_run": "https://github.com/Cryosimorgh/Sunder/actions/runs/41230865897",
+    "artifact": "https://github.com/Cryosimorgh/Sunder/actions/runs/41230865897/artifacts/13053607373",
+    "artifact_sha256": "874cae88d8970b14457317ade4836f58afca7818e36f72a58c2d1a26b8e9a211",
+    "source_hashes_and_driver": "docs/P10_NATIVE_ATTEMPT_20261031.json",
+    "commands": [
+      "python -m unittest test_sunder_world -q",
+      "python build_physics3.py",
+      "python headless_demo.py --capacity 1 --bodies 0 --steps 4 --replay",
+      "python run_world_sweep.py --full"
+    ],
+    "case_matrix": [
+      [
+        "cpu-world",
+        "PASS",
+        17
+      ],
+      [
+        "build",
+        "PASS",
+        "9 shaders + DLL"
+      ],
+      [
+        "world-empty",
+        "FAIL",
+        "D3D12 context/admission"
+      ],
+      [
+        "world-16",
+        "NOT RUN"
+      ],
+      [
+        "world-1024",
+        "NOT RUN"
+      ],
+      [
+        "native-physics",
+        "NOT RUN"
+      ],
+      [
+        "legacy-pool-rail",
+        "NOT RUN"
+      ],
+      [
+        "native-stress",
+        "NOT RUN"
+      ]
+    ]
   }
 }
