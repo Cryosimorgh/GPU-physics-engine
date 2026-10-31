@@ -1,16 +1,16 @@
 # GPU Physics Engine — Technical Architecture and Development Record
 
 **Project:** [Cryosimorgh/GPU-physics-engine](https://github.com/Cryosimorgh/GPU-physics-engine)  
-**Record date:** 2026-10-19
+**Record date:** 2026-10-31
 **Document type:** Living engineering record  
 **Style:** Clear technical English, based on ASD-STE100 principles without strict controlled-language limits  
-**Status:** Experimental GPU physics engine. G5 is **DEFERRED / NOT QUALIFIED**. G6 and production release remain **NOT QUALIFIED**. P4 is integrated as an explicit option after G6-P5 headless validation; matching-tick rendering remains the default.
+**Status:** Experimental GPU physics engine. **P10 native 3D foundation: GO within the tested bounded headless envelope.** G5 is **DEFERRED / NOT QUALIFIED**. G6 and production release remain **NOT QUALIFIED**. P9's bitwise replay guarantee remains unresolved and does not block numerically validated 3D development. P4 remains an explicit rendering option; matching-tick rendering remains the default for the planar viewer.
 
 > **Update rule:** Update this document in the same change that closes, rejects, or reopens a development breakpoint. Keep prior results and their limitations. Do not turn a local experiment into a released feature by changing its status here.
 
 ## 1. Purpose and scope
 
-The project tests a **GPU-first physics architecture** for many moving entities and contacts. It uses native Zig and C on Windows, Direct3D 12 for GPU execution, and HLSL compute shaders for simulation. The current physics model is mainly **two-dimensional disks**. The playable billiards mode adds a limited model of rolling and spin. It is not a general three-dimensional rigid-body engine.
+The project tests a **GPU-first physics architecture** for many moving entities and contacts. It uses native Zig and C on Windows, Direct3D 12 for GPU execution, and HLSL compute shaders for simulation. The original **two-dimensional disk** and billiards models remain compatibility modules. P10 adds genuine headless **3D sphere/sphere and sphere/plane rigid-body dynamics**. This is a bounded foundation, not a general engine with arbitrary collision shapes.
 
 The central design aim is to keep the simulation state and most calculations on the GPU. The CPU configures work, submits commands, processes bounded results, and controls resource lifetime. It should not move every entity to system memory after each tick.
 
@@ -36,6 +36,120 @@ Use these labels throughout the document:
 | **Planned** | A design target. No implementation claim. |
 
 ## 2. System layout
+
+### P10 native 3D foundation — GO (2026-10-31)
+
+**Plan and source:** [P10_DESIGN.md](P10_DESIGN.md), `physics3.h/.c/.hlsl`,
+`physics3-schema.json`, `build_physics3.py`, `test_physics3.py`, `run_p10.py`.
+This isolated module reuses the existing D3D12 StorageDevice runtime, admission,
+resource claims, barriers, checked fences, timestamp queries and retained native
+completion objects. The old planar ABI, solver and acceptance thresholds are
+unchanged. Generalizing a public world API follows this foundation, not vice versa.
+
+**3D state:** A 48-word binary32 SoA holds xyz position, velocity, force, torque
+and angular velocity; xyzw quaternion; inverse mass, radius and materials; six
+independent entries each for body inertia and inverse inertia; sleep count and
+slot/generation identity. Dynamic tensors must be symmetric positive definite
+and mutual inverses. The input schema documents exact offsets. `invMass=0`
+means a static sphere. Planes have an arbitrary unit inward normal and signed
+offset. Near-unit imported plane normals are normalized in binary64 together
+with their offset. Tests use metres, kilograms and seconds.
+
+**Passes and contacts:** Prepare -> xyz spatial hash -> bounded narrowphase ->
+projected contact impulse update -> per-body adjacency gather -> integrate ->
+validate -> publish. Solve/gather repeat within a fixed work budget. Hash bucket
+collisions are resolved by exact signed cell-coordinate checks. All 27 neighbor
+cells are searched. Reachable speculative constraints are formed even if a body
+was initially stationary; the tested three-sphere transfer case would otherwise
+miss a new collision after an impulse. Source and final speeds must satisfy
+`2*radius + 2*speed*dt <= cell_size`; cell coordinates are bounded to magnitude
+1,000,000. Violations reject the whole tick. This envelope proves the stencil's
+reach; it is not exact swept time-of-impact integration.
+
+Contacts use a binary64 normal impulse and a full xyz tangent impulse projected
+onto a circular Coulomb cone. Body orientation transforms inertia tensors for
+angular response. Restitution and friction combine by minimum for two spheres;
+static planes use the sphere material. A 0.5 m/s impact threshold suppresses
+resting restitution. Positive-gap constraints use separation/dt when inactive;
+initially imminent impacts may bounce speculatively. Degree-relaxed Jacobi
+supports coupled contacts without concurrent body writes. A fixed budget may
+reject difficult contact networks; P10 does not resolve G5 convergence debt.
+
+Orientation uses the post-impulse world angular velocity for a quaternion
+exponential step. World angular momentum is then transported through the updated
+inertia tensor. This preserves angular impulse/torque transfer when orientation
+changes; general anisotropic rotation remains a first-order integration scheme.
+KKT checks refer to the solved configuration before orientation advection.
+Sleep/wake counters are supported; sleeping bodies still receive force/contact
+evaluation. This is not a new sleep-culling optimization.
+
+**Publication/lifetime:** Three bounded state buffers provide immutable accepted
+snapshots. The previous generation is read-only throughout a tick. GPU validation
+checks state finiteness, quaternion norm, normal/tangent projected residuals,
+friction bounds, final separation, speed envelope and buffer guards before the
+publish pass. Only a successful fence-complete header advances the host accepted
+pointer. Overflow, invalid input, injected rejection and nonconvergence publish
+zero bodies. Invalid host edits preserve the previous state. Idle tick-boundary
+edits require no leases, preserve the global tick and advance generation. The
+first accepted dt fixes that context's timestep. Consumers register native GPU
+completion before submission; delayed release retains the resource claim. Slot
+exhaustion gives bounded backpressure. Calls are owner-thread serialized.
+
+**Independent local Windows verification:** The seven native groups pass xyz
+independent/combined motion, force/torque, quaternion Rodrigues checks, arbitrary
+normal/offset planes, elastic/inelastic and grazing/oblique impacts, unequal
+radii/masses, static spheres, frictional spin and spin-to-translation transfer,
+rotated non-diagonal tensors, a six-contact tetrahedral cluster, impulse-induced
+third-body contact, resting/sleep/wake, penetration correction, overflow,
+nonconvergence, rejected edits/ticks, fixed-clock continuity and snapshot
+backpressure. A delayed real copy-queue GPU reader retains an exact prior snapshot
+across a later physics tick. That case and ordinary/injected ticks also pass the
+D3D12 debug layer with GPU-based validation. The double-precision CPU oracle
+independently recomputes geometry, contact completeness, KKT, impulse transfer,
+linear/angular momentum, energy bounds and orientation. `evidence/p10/demo.json`
+records five actual accepted frames of twelve colliding and rotating spheres.
+
+| Native 3D stress population | Constraints / max degree | Median complete GPU tick, ms | Tracked committed bytes |
+|---|---:|---:|---:|
+| 10,000 | 5,000 / 1 | 2.2265 | 14,221,312 |
+| 100,000 | 50,000 / 1 | 8.0055 | 136,577,024 |
+| 1,000,000 | 500,000 / 1 | 67.15825 | 1,360,855,040 |
+
+Each row is three fresh collision-bearing scenes on NVIDIA GeForce RTX 4070 Ti
+SUPER, not later contact-free ticks. Spheres form independent frictional pairs
+on a separated xyz lattice, with nonzero xyz motion and angular response.
+Constraints/body=0.5; every sphere participates. The CPU checks all-body analytic
+normal/tangent impulses and spin, momentum/energy/separation, identity/quaternion
+data and a pair-isolation certificate. GPU validation remains enabled. Raw JSON
+separates seven GPU phases, total GPU time and wall time including initialization,
+readback and CPU verification. Three samples establish neither sustained tail
+latency nor a real-time operating envelope, and do not represent a million-body
+connected graph. No before/after speedup is claimed: there was no prior 3D path.
+
+**Compatibility:** Existing `python dev_test.py full` passes all eight groups in
+306.19 s, including 10,598 accepted analytical ticks, two expected rejections,
+10,000 exact stationary-rack ticks, command safety, CPU contracts, device tests,
+storage and spatial CLIs. Nineteen workflow/rail/P9 Python tests also pass.
+No planar C/HLSL/Zig source or threshold is changed. Rebuilt legacy binaries
+are local test artifacts, not new committed production outputs.
+
+**Replay and integration:** PR #6 is merged as P9 evidence after its 237-hash
+offline verifier and 19 CPU tests passed; its FAIL/INCOMPLETE result is preserved.
+This branch starts at main `acf8d3b`. Two native 3D tetrahedral runs pass the
+independent physical oracle and happened to match bitwise locally. Equality is
+recorded as an observation only. Numerical validity is the P10 requirement;
+P9/cross-device/compiler bitwise replay is not claimed or used to block P10.
+The historical P9 proposed-next-task text below is superseded by the owner's
+2026-10-31 native-3D instruction, not erased.
+
+**Decision:** **GO for the bounded P10 native 3D foundation. NO-GO for production
+release or general topology/real-time qualification.** Convex hulls, meshes,
+joints, terrain, generalized ECS and a polished public world API are not
+implemented. More coupled/dense/sustained workloads and higher-order anisotropic
+integration remain future work. G5 stays deferred, GPU-02 stays unverified and
+formal G6 stays not qualified. [P10_EVIDENCE.json](P10_EVIDENCE.json) records the
+source hashes and summarized runs; the single handoff ZIP carries complete logs,
+build provenance, raw timing rows and the accepted-state demonstration.
 
 ```text
 Inputs / scene / structural commands
@@ -1173,6 +1287,15 @@ The fixed-step budget is the existing **7,812.5 us**, not a new threshold. GPU s
 
 ## 16. Risks and work still required
 
+**P10 scope note (2026-10-31):** Native 3D numerical validity is now independently
+tested and is not blocked by P9 bitwise equality. Its bounded GO does not close
+the historical G5/G6/display risks below. Three stress samples cover independent
+pairs, not dense arbitrary graphs or sustained deadlines. Tensor rotation is
+first order; broader energy-drift qualification and higher-order integration
+remain future work. There is no 3D viewer, public world API, convex/mesh/joint or
+terrain support in this slice. Memory/consumer limits and rejected-tick behavior
+are explicit in the P10 section above.
+
 1. **State publication and freshness:** P1–P6 source is integrated; P7 real-window testing on an isolated branch records correct command acknowledgment and fence ownership in both rendering modes. Blocking remains default; opt-in nonblocking gives accepted-state snapshot age **p95 two ticks** in normal actual-window tests, versus zero blocking. Measure real display age only when external correlated events exist; do not infer it from a successful Present.
 2. **General island convergence — deferred G5 debt:** Policy 4 remains opt-in with limited, valid quick-sweep results; it is not qualified for sustained/general workloads. The rejected Anderson trial lost previously accepted configurations. Do not loosen KKT/rollback or describe G5 as passed; reopen only against an explicit large-island requirement and new algorithmic design.
 3. **Large-island architectural limitation — parked:** The 1,024-body chain requires about 4,024 sweeps, with ~140 ms of solver execution in deterministic test conditions. Its settled chain operator is poorly conditioned (~424,971). Recent noise-aware micro-optimizations were inconclusive; a bounded Anderson method broke convergence. The serial O(C²) deterministic sorter remains measurement-only. Do not initiate further G5 experiments without an authorized performance target and a new architecture hypothesis.
@@ -1215,6 +1338,7 @@ Next action:
 
 | Date | Breakpoint | Record update |
 |---|---|---|
+| 2026-10-31 | P10 native 3D foundation — bounded GO | Added tensor/quaternion 3D GPU sphere/plane dynamics, immutable publication and real delayed-reader proof. Seven native groups, all three stress scales and unchanged full 2D regressions pass. Numerical native validity required; bitwise replay remains unqualified. Formal G6/release remains not qualified. |
 | 2026-10-19 | G6-P8b merged correction / P9 BLOCKED on repeatability | PR #5 merged at e843a42; P8/P8a failed evidence retained. P9 records four functionally passing 30-second sessions, but stops at 1K tick32 repeatability failure; two short traces localize atomic scatter/color-order variation. 8K and remaining lifecycle checks NOT RUN. G5 deferred, GPU-02 unverified, G6 not qualified. |
 | 2026-10-19 | G6-P8a pool KKT failure root cause — LOCALIZATION PASS / PHYSICS NOT FIXED | Verified 217 ZIP payload hashes, 12 pushed Git blob IDs and offline verifier; original P8, unmodified control and two diagnostics have 4,073 identical state hashes each, nine shots, and matching tick-4,072 rejection/rollback. Subcode 1 = ball 7/right rail normal KKT. Independently reproduced FP32 vs FP64 gap difference times 128 exactly equals residual 7.152557373046875e-06 (9.8368× limit). No solver/production fix, G5 deferred, P8 small pool still fails, G6 unqualified. |
 | 2026-10-19 | G6-P8 sustained physics external audit — LIMITED / POOL FAIL | Independently verified 41 ZIP checks, 7 pushed Git blobs and 5,788 raw attempts (5,787 accepted, one shared-error-32 pool rejection). Medium/large 30-wall-second runs accept 884/831 ticks (1,024/8,192 disks in max-16-body islands), with stable tracked memory and checked rollback, but CPU-oracle overhead, GPU drift and 220.17-ms worst tick prohibit real-time claims. Pool 9-shot sequence fails at attempt 4,072; exact subvalidator unknown. G5 deferred, GPU-02 unverified, G6 not qualified. |
