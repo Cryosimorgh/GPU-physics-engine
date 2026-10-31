@@ -350,7 +350,12 @@ class World:
         self._ready()
         if self._stage_state is None:
             # Explicit readback only for structural/input edits, never a normal tick.
-            self._stage_state = self._backend.read()
+            key = (self.tick_id, self.epoch)
+            # Acquire has already read a validated immutable accepted state.
+            # Reuse it for safe next-boundary edits even when its native lease
+            # is still held by the consumer; never mutate the snapshot copy.
+            self._stage_state = (self._cache.copy() if self._cache_key == key
+                                 else self._backend.read())
             self._stage_active = self._accepted_active.copy()
             self._stage_gen = self._accepted_gen.copy()
             self._stage_free = list(self._free)
