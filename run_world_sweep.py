@@ -54,6 +54,9 @@ def driver_inventory():
 
 def execute(name, args, result, timeout=600, output=None):
     start = time.perf_counter()
+    legacy_root = ROOT / "dev-test-results"
+    legacy_before = ({p.name for p in legacy_root.iterdir() if p.is_dir()}
+                     if name == "legacy-pool-rail" and legacy_root.is_dir() else set())
     log = RUN / (name + ".log")
     env = os.environ.copy()
     env["SUNDER_P10_EVIDENCE_DIR"] = str(RUN)
@@ -104,6 +107,18 @@ def execute(name, args, result, timeout=600, output=None):
                 raise ValueError("hardware compute adapter unverified: " + adapter)
         except (OSError, ValueError, KeyError) as exc:
             row.update(status="FAIL", failure="invalid native evidence: " + str(exc))
+            ok = False
+    if name == "legacy-pool-rail" and legacy_root.is_dir():
+        fresh = sorted((p for p in legacy_root.iterdir()
+                        if p.is_dir() and p.name not in legacy_before))
+        row["original_legacy_output"] = [str(p.relative_to(ROOT)) for p in fresh]
+        try:
+            for directory in fresh:
+                destination = RUN / "legacy-dev-test" / directory.name
+                shutil.copytree(directory, destination)
+        except (OSError, shutil.Error) as exc:
+            row.update(status="FAIL",
+                       failure=f"could not retain original legacy evidence: {exc}")
             ok = False
     result["tests"].append(row)
     print(row["status"], name, flush=True)
